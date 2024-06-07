@@ -1,0 +1,48 @@
+[package]
+name = "blackbox-explore-rs"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/KoffeinFlummi/blackbox-explore-rs"
+
+[dependencies]
+log = "0.4.21"
+anyhow = "1.0.86"
+
+blackbox-log = "0.4.2"
+
+rustfft = "6.2.0"
+num-complex = "0.4.6"
+
+eframe = "0.27.2"
+egui = "0.27.2"
+egui_plot = "0.27.2"
+egui_extras = { version = "0.27.2", features = ["image", "http", "svg"] }
+image = { version = "0.25.1", features = ["png"] }
+rfd = "0.13"
+
+egui_oszi = { git = "ssh://git@github.com/KoffeinFlummi/egui_oszi" }
+#egui_oszi = { path = "../egui_oszi" }
+
+# Used for profiling
+puffin = { version = "0.19", optional = true }
+puffin_egui = { version = "0.27", optional = true }
+colorgrad = "0.6.2"
+
+# Only for native
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11.3"
+futures = "0.3.28"
+
+# Only for WASM
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+
+[features]
+profiling = ["dep:puffin", "dep:puffin_egui"]
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2

@@ -5,6 +5,7 @@ mod gui;
 mod log_file;
 mod utils;
 mod iter;
+mod step_response;
 
 use gui::App;
 

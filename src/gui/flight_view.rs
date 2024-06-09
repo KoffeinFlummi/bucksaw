@@ -19,7 +19,7 @@ impl FlightView {
 
         Self {
             plot_tab: PlotTab::new(),
-            tune_tab: TuneTab::new(),
+            tune_tab: TuneTab::new(ctx, data.clone()),
             vibe_tab: VibeTab::new(ctx, data.clone()),
             data,
             plot_group: TimeseriesGroup::new("timeseries_plots", false),
@@ -28,6 +28,7 @@ impl FlightView {
 
     pub fn set_flight(&mut self, flight: FlightData) {
         self.data = Arc::new(flight);
+        self.tune_tab.set_flight(self.data.clone());
         self.vibe_tab.set_flight(self.data.clone());
     }
 

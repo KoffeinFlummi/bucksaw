@@ -41,7 +41,7 @@ impl OpenFileDialog {
                     &ctx,
                     file_progress_sender,
                     flight_progress_sender
-                );
+                ).await;
 
                 file_sender.send(log_data).unwrap();
 
@@ -79,7 +79,7 @@ impl OpenFileDialog {
                 &ctx,
                 file_progress_sender,
                 flight_progress_sender
-            );
+            ).await;
 
             file_sender.send(log_data).unwrap();
 

@@ -9,7 +9,7 @@ pub struct LogFile {
 }
 
 impl LogFile {
-    pub fn parse(
+    pub async fn parse(
         file_name: String,
         bytes: Vec<u8>,
         ctx: &egui::Context,
@@ -24,19 +24,27 @@ impl LogFile {
         for (i, header) in file.iter().enumerate() {
             log::info!("Parsing flight {}/{} of {}", i+1, file.log_count(), file_name);
 
-            let flight = header.map(|h|
-                FlightData::parse(
-                    i,
-                    h,
-                    ctx,
-                    flight_progress_sender.clone()
-                ).unwrap()
-            );
-            flights.push(flight);
+            match header {
+                Ok(h) => {
+                    let flight = FlightData::parse(
+                        i,
+                        h,
+                        ctx,
+                        flight_progress_sender.clone()
+                    ).await.unwrap();
+                    flights.push(Ok(flight));
+                },
+                Err(e) => {
+                    flights.push(Err(e));
+                }
+            }
 
             let f = ((i+1) as f32) / (file.log_count() as f32);
             file_progress_sender.send(f).unwrap();
             ctx.request_repaint();
+
+            #[cfg(target_arch = "wasm32")]
+            async_std::task::sleep(std::time::Duration::from_millis(100)).await;
         }
 
         Self {

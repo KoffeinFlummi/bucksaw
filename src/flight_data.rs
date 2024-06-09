@@ -112,9 +112,9 @@ impl FlightData {
         self.rssi = self.main_values.get("rssi").cloned();
     }
 
-    pub fn parse(
+    pub async fn parse(
         index: usize,
-        headers: blackbox_log::headers::Headers,
+        headers: blackbox_log::headers::Headers<'_>,
         ctx: &egui::Context,
         progress_sender: Sender<f32>
     ) -> Result<Self, ()> {
@@ -180,6 +180,8 @@ impl FlightData {
             if i == 0 {
                 progress_sender.send(parser.stats().progress).unwrap();
                 ctx.request_repaint();
+                #[cfg(target_arch = "wasm32")]
+                async_std::task::sleep(std::time::Duration::from_secs_f32(0.00001)).await;
             }
             i = (i + 1) % 1000;
         }

@@ -1,8 +1,11 @@
 use egui::Align2;
 use egui::Vec2;
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
@@ -99,7 +102,6 @@ impl OpenFileDialog {
         }
 
         while let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
-            log::info!("recv {:?}", flight_progress);
             self.flight_progress = flight_progress;
         }
 

@@ -3,6 +3,7 @@ use egui_oszi::{TimeseriesGroup, TimeseriesLine, TimeseriesPlot, TimeseriesPlotM
 
 use crate::gui::colors::Colors;
 use crate::flight_data::FlightData;
+use crate::gui::flex::FlexColumns;
 
 pub struct TuneTab {
     roll_plot: TimeseriesPlotMemory<f64>,
@@ -11,7 +12,7 @@ pub struct TuneTab {
 }
 
 // TODO: duplication
-const PLOT_HEIGHT: f32 = 300.0;
+const MIN_WIDE_WIDTH: f32 = 1000.0;
 
 impl TuneTab {
     pub fn new() -> Self {
@@ -28,54 +29,61 @@ impl TuneTab {
         fd: &FlightData,
         timeseries_group: &mut TimeseriesGroup
     ) {
+        let total_width = ui.available_width();
         let times = &fd.times;
-        let legend = Legend::default().position(Corner::LeftTop);
-
         let colors = Colors::get(ui);
+        FlexColumns::new(MIN_WIDE_WIDTH)
+            .column(|ui| ui.vertical(|ui| {
+                ui.heading("Time Domain");
 
+                let axes = [&mut self.roll_plot, &mut self.pitch_plot, &mut self.yaw_plot];
+                for (i, plot) in axes.into_iter().enumerate() {
+                    let height = if ui.available_width() < total_width {
+                        ui.available_height() / (3 - i) as f32
+                    } else {
+                        300.0
+                    };
 
-        let axes = [
-            (&mut self.roll_plot, "Roll"),
-            (&mut self.pitch_plot, "Pitch"),
-            (&mut self.yaw_plot, "Yaw")
-        ];
+                    ui.add(
+                        TimeseriesPlot::new(plot)
+                            .group(timeseries_group)
+                            .legend(Legend::default().position(Corner::LeftTop))
+                            .height(height)
+                            .line(
+                                TimeseriesLine::new("Gyro (unfilt.)").color(colors.gyro_unfiltered),
+                                times.iter().copied().zip(fd.gyro_unfilt.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("Gyro").color(colors.gyro_filtered),
+                                times.iter().copied().zip(fd.gyro_adc.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("Setpoint").color(colors.setpoint),
+                                times.iter().copied().zip(fd.setpoint.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("P").color(colors.p),
+                                times.iter().copied().zip(fd.p.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("I").color(colors.i),
+                                times.iter().copied().zip(fd.i.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("D").color(colors.d),
+                                times.iter().copied().zip(fd.d.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                            .line(
+                                TimeseriesLine::new("F").color(colors.f),
+                                times.iter().copied().zip(fd.f.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
+                            )
+                    );
+                }
+            }).response)
+            .column(|ui| {
+                ui.heading("Step Response")
 
-        for (i, (plot, name)) in axes.into_iter().enumerate() {
-            ui.heading(name);
-            ui.add(
-                TimeseriesPlot::new(plot)
-                    .group(timeseries_group)
-                    .legend(legend.clone())
-                    .height(PLOT_HEIGHT)
-                    .line(
-                        TimeseriesLine::new("Gyro (unfilt.)").color(colors.gyro_unfiltered),
-                        times.iter().copied().zip(fd.gyro_unfilt.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("Gyro").color(colors.gyro_filtered),
-                        times.iter().copied().zip(fd.gyro_adc.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("Setpoint").color(colors.setpoint),
-                        times.iter().copied().zip(fd.setpoint.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("P").color(colors.p),
-                        times.iter().copied().zip(fd.p.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("I").color(colors.i),
-                        times.iter().copied().zip(fd.i.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("D").color(colors.d),
-                        times.iter().copied().zip(fd.d.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-                    .line(
-                        TimeseriesLine::new("F").color(colors.f),
-                        times.iter().copied().zip(fd.f.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
-                    )
-            );
-        }
+            })
+            .show(ui);
     }
 }

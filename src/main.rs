@@ -4,6 +4,7 @@ mod flight_data;
 mod gui;
 mod log_file;
 mod utils;
+mod iter;
 
 use gui::App;
 

@@ -3,6 +3,7 @@ pub mod flight_view;
 pub mod open_file;
 pub mod blackbox_ui_ext;
 pub mod tabs;
+pub mod flex;
 
 use std::path::PathBuf;
 
@@ -49,7 +50,7 @@ impl App {
         }
     }
 
-    fn open_file(&mut self, file_data: LogFile) {
+    fn open_file(&mut self, ctx: &egui::Context, file_data: LogFile) {
         let flight_data = file_data.flights
             .iter()
             .filter_map(|result| result.as_ref().ok().cloned())
@@ -57,9 +58,14 @@ impl App {
             .next()
             .clone();
 
+        let single_log = file_data.flights.len() == 0;
         self.file_data = Some(file_data);
-        self.flight_view = flight_data.map(|data| FlightView::new(data.clone()));
+        self.flight_view = flight_data.map(|data| FlightView::new(ctx, data.clone()));
         self.open_file_dialog = None;
+
+        if single_log || ctx.available_rect().width() < 1000.0 {
+            self.left_panel_open = false;
+        }
     }
 }
 
@@ -78,7 +84,7 @@ impl eframe::App for App {
             .flatten();
 
         if let Some(result) = open_file_result {
-            self.open_file(result)
+            self.open_file(ctx, result);
         }
 
         let enabled = !self.open_file_dialog.is_some();
@@ -163,19 +169,19 @@ impl eframe::App for App {
                                         if let Ok(flight) = parse_result {
                                             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                                                 if ui.button("➡").clicked() {
-                                                    self.flight_view = Some(FlightView::new(flight.clone()));
+                                                    if let Some(fv) = self.flight_view.as_mut() {
+                                                        fv.set_flight(flight.clone());
+                                                    } else {
+                                                        self.flight_view = Some(FlightView::new(ui.ctx(), flight.clone()));
+                                                    }
                                                 }
                                             });
                                         }
                                     });
 
                                     match parse_result {
-                                        Ok(flight) => {
-                                            flight.show(ui);
-                                        },
-                                        Err(error) => {
-                                            error.show(ui);
-                                        }
+                                        Ok(flight) => { flight.show(ui); },
+                                        Err(error) => { error.show(ui); }
                                     }
                                 });
 

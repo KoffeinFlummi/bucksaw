@@ -1,19 +1,25 @@
 use std::f64::consts::PI;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::{Arc, OnceLock};
+
+use itertools::Itertools;
 
 use egui::Color32;
 use egui_oszi::TimeseriesGroup;
 use num_complex::Complex;
 
 use crate::flight_data::FlightData;
+use crate::gui::flex::*;
 use crate::utils::execute;
-
-const FFT_SIZE: usize = 512;
-const FFT_OVERLAP_DENOMINATOR: usize = 32;
+use crate::iter::IterExt;
 
 const COLORGRAD_LOOKUP_SIZE: usize = 128;
 const TIME_DOMAIN_TEX_WIDTH: usize = 1024;
 const THROTTLE_DOMAIN_BUCKETS: usize = 256;
+
+const FFT_SIZE_OPTIONS: [usize; 4] = [256, 512, 1024, 2048];
+
+const MIN_WIDE_WIDTH: f32 = 1000.0;
 
 #[derive(PartialEq, Clone, Copy)]
 enum VibeDomain {
@@ -21,125 +27,239 @@ enum VibeDomain {
     Throttle,
 }
 
+#[derive(PartialEq, Clone, Copy, Default, Debug)]
+enum Colorscheme {
+    Turbo,
+    Viridis,
+    #[default]
+    Inferno,
+}
+
+impl Into<colorgrad::Gradient> for Colorscheme {
+    fn into(self) -> colorgrad::Gradient {
+        match self {
+            Self::Turbo => colorgrad::turbo(),
+            Self::Viridis => colorgrad::viridis(),
+            Self::Inferno => colorgrad::inferno(),
+        }
+    }
+}
+
+#[derive(PartialEq, Clone)]
+struct FftSettings {
+    pub size: usize,
+    pub step_size: usize,
+    pub plot_colorscheme: Colorscheme,
+    pub plot_max: f64,
+    color_lookup_table: Option<(Colorscheme, [egui::Color32; COLORGRAD_LOOKUP_SIZE])>,
+}
+
+impl FftSettings {
+    fn color_lookup_table<'a>(&'a mut self) -> &'a [egui::Color32; COLORGRAD_LOOKUP_SIZE] {
+        if self.color_lookup_table.map(|(t, _)| t != self.plot_colorscheme).unwrap_or(true) {
+            let gradient: colorgrad::Gradient = self.plot_colorscheme.into();
+            let table = (0..COLORGRAD_LOOKUP_SIZE)
+                .map(move |i| {
+                    let f = (i as f64) / (COLORGRAD_LOOKUP_SIZE as f64);
+                    let rgba = gradient.at(f).to_rgba8();
+                    egui::Color32::from_rgb(rgba[0], rgba[1], rgba[2])
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
+            self.color_lookup_table = Some((self.plot_colorscheme, table));
+        }
+
+        self.color_lookup_table.as_ref().map(|(_, t)| t).unwrap()
+    }
+
+    pub fn color_at(&mut self, f: f64) -> egui::Color32 {
+        let i = (f * (COLORGRAD_LOOKUP_SIZE as f64)) as usize;
+        let i = usize::min(i, COLORGRAD_LOOKUP_SIZE - 1);
+        self.color_lookup_table()[i]
+    }
+
+    pub fn needs_recalculating(&self, other: &Self) -> bool {
+        self.size != other.size || self.step_size != other.step_size
+    }
+
+    pub fn needs_redrawing(&self, other: &Self) -> bool {
+        self.needs_recalculating(other) ||
+            self.plot_colorscheme != other.plot_colorscheme ||
+            self.plot_max != other.plot_max
+    }
+}
+
+impl Default for FftSettings {
+    fn default() -> Self {
+        Self {
+            size: 1024,
+            step_size: 32,
+            plot_colorscheme: Colorscheme::default(),
+            plot_max: 10.0,
+            color_lookup_table: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct FftChunk {
     time: f64,
-    fft: [f64; FFT_SIZE/2], // only real signals :(
+    fft: Vec<f64>,
     throttle: f64,
 }
 
 impl FftChunk {
-    pub fn calculate(time: f64, data: &[f64], throttle: f64) -> Option<Self> {
-        if data.len() < FFT_SIZE {
-            return None;
-        }
+    pub fn hamming_window(fft_size: usize) -> &'static [f64] {
+        // TODO
+        static LOOKUP: OnceLock<[Vec<f64>; FFT_SIZE_OPTIONS.len()]> = OnceLock::new();
+        let lookup = LOOKUP.get_or_init(|| {
+            FFT_SIZE_OPTIONS
+                .into_iter()
+                .map(|fft_size| {
+                    (0..fft_size)
+                        .map(|i| 0.53836 * (1.0 - (2.0 * PI * (i as f64) / (fft_size as f64)).cos()))
+                        .collect()
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
 
-        // convert to complex and apply hann window
+        });
+
+        &lookup[FFT_SIZE_OPTIONS.iter().position(|s| *s == fft_size).unwrap()]
+    }
+
+    pub fn calculate(time: f64, data: &[f64], throttle: f64) -> Self {
+        // convert to complex and apply hamming window
+        let window = Self::hamming_window(data.len());
         let mut data: Vec<Complex<f64>> = data
             .into_iter()
             .enumerate()
-            .map(|(i, r)| {
-                let window = 0.5 * (1.0 - (2.0 * PI * (i as f64) / (FFT_SIZE as f64)).cos());
-                Complex::new(*r * window, 0.0)
-            })
+            .map(|(i, r)| Complex::new(*r * window[i], 0.0))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
-        let mut planner = rustfft::FftPlanner::<f64>::new();
-        let plan = planner.plan_fft_forward(FFT_SIZE);
-        plan.process(&mut data);
+        rustfft::FftPlanner::<f64>::new()
+            .plan_fft_forward(data.len())
+            .process(&mut data);
 
         let fft = data[data.len()/2..]
             .iter()
             .map(|c| c.re.log10())
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+            .collect();
 
-        Some(Self {
+        Self {
             time,
             fft,
             throttle,
-        })
+        }
     }
 }
 
 struct FftAxis {
     ctx: egui::Context,
+    fft_settings: FftSettings,
+
+    i: usize,
+    flight_data: Arc<FlightData>,
+    value_callback: Box<fn(&FlightData) -> &[Vec<f64>; 3]>,
 
     chunks: Vec<FftChunk>,
-    chunk_receiver: Option<Receiver<FftChunk>>,
-
-    time_textures: Vec<(f64, egui::TextureHandle)>,
-    time_texture_receiver: Option<Receiver<(f64, egui::TextureHandle)>>,
+    chunk_receiver: Option<Receiver<Vec<FftChunk>>>,
+    time_textures: Vec<(f64, f64, egui::TextureHandle)>,
+    time_texture_receiver: Option<Receiver<(f64, f64, egui::TextureHandle)>>,
     throttle_texture: Option<egui::TextureHandle>,
     throttle_texture_receiver: Option<Receiver<egui::TextureHandle>>,
-
-    colorgrad_lookup: [egui::Color32; COLORGRAD_LOOKUP_SIZE],
 }
 
 impl FftAxis {
     pub fn new(
         ctx: &egui::Context,
-        time: Vec<f64>,
-        data: Vec<f64>,
-        throttle: Vec<f64>
+        fft_settings: FftSettings,
+        i: usize,
+        flight_data: Arc<FlightData>,
+        value_callback: fn(&FlightData) -> &[Vec<f64>; 3]
     ) -> Self {
-        let (chunk_sender, chunk_receiver) = channel();
-
-        let time = time.clone();
-        let throttle = throttle.clone();
-
-        execute(async move {
-            let time_chunks: Vec<_> = time.chunks(FFT_SIZE/FFT_OVERLAP_DENOMINATOR).collect();
-            let data_chunks: Vec<_> = data.chunks(FFT_SIZE/FFT_OVERLAP_DENOMINATOR).collect();
-            let throttle_chunks: Vec<_> = throttle.chunks(FFT_SIZE/FFT_OVERLAP_DENOMINATOR).collect();
-            let time_windows = time_chunks
-                .windows(FFT_OVERLAP_DENOMINATOR)
-                .map(|window| window.into_iter().map(|c| c.into_iter()).flatten().copied().collect::<Vec<_>>());
-            let data_windows = data_chunks
-                .windows(FFT_OVERLAP_DENOMINATOR)
-                .map(|window| window.into_iter().map(|c| c.into_iter()).flatten().copied().collect::<Vec<_>>());
-            let throttle_windows = throttle_chunks
-                .windows(FFT_OVERLAP_DENOMINATOR)
-                .map(|window| window.into_iter().map(|c| c.into_iter()).flatten().copied().collect::<Vec<_>>());
-
-            for (time, (data, throttle)) in time_windows.zip(data_windows.zip(throttle_windows)) {
-                if let Some(chunk) = FftChunk::calculate(time[0], &data, throttle[throttle.len()/2]) {
-                    chunk_sender.send(chunk).unwrap();
-                }
-            }
-        });
-
-        Self {
+        let mut new = Self {
             ctx: ctx.clone(),
+            fft_settings,
+
+            i,
+            flight_data,
+            value_callback: Box::new(value_callback),
 
             chunks: Vec::new(),
-            chunk_receiver: Some(chunk_receiver),
+            chunk_receiver: None,
             time_textures: Vec::new(),
             time_texture_receiver: None,
             throttle_texture: None,
             throttle_texture_receiver: None,
-
-            colorgrad_lookup: (0..COLORGRAD_LOOKUP_SIZE)
-                .map(move |i| {
-                    let f = (i as f64) / (COLORGRAD_LOOKUP_SIZE as f64);
-                    let rgba = colorgrad::inferno().at(f).to_rgba8();
-                    egui::Color32::from_rgb(rgba[0], rgba[1], rgba[2])
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-        }
+        };
+        new.recalculate_ffts();
+        new
     }
 
-    pub fn recreate_textures(&mut self) {
+    pub fn create_image(data: &[FftChunk], max: f64, fft_settings: &mut FftSettings) -> egui::ColorImage {
+        let mut image = egui::ColorImage::new([data.len(), data[0].fft.len()], Color32::TRANSPARENT);
+
+        for x in 0..data.len() {
+            for y in 0..data[x].fft.len() {
+                let val = data[x].fft[y];
+                image[(x, y)] = fft_settings.color_at(f64::max(0.0, val) / max);
+            }
+        }
+
+        image
+    }
+
+    pub fn recalculate_ffts(&mut self) {
+        let (chunk_sender, chunk_receiver) = channel();
+
+        self.chunks.truncate(0);
+        self.chunk_receiver = Some(chunk_receiver);
+        self.time_textures.truncate(0);
+        self.throttle_texture = None;
+
+        let fd = self.flight_data.clone();
+        let cb = self.value_callback.clone();
+        let i = self.i;
+        let fft_size = self.fft_settings.size;
+        let fft_step_size = self.fft_settings.step_size;
+        let ctx = self.ctx.clone();
+        execute(async move {
+            let throttle = &fd.setpoint.as_ref().unwrap()[3];
+            let values = &(cb(&fd))[i];
+
+            let time_windows = fd.times.iter().copied().overlapping_windows(fft_size, fft_step_size);
+            let data_windows = values.iter().copied().overlapping_windows(fft_size, fft_step_size);
+            let throttle_windows = throttle.iter().copied().overlapping_windows(fft_size, fft_step_size);
+
+            time_windows.zip(data_windows.zip(throttle_windows))
+                .filter(|(time, _)| time.len() == fft_size)
+                .map(|(time, (data, throttle))| FftChunk::calculate(time[0], &data, throttle[throttle.len()/2]))
+                .chunks(100)
+                .into_iter()
+                .for_each(|chunks| {
+                    chunk_sender.send(chunks.collect()).unwrap();
+                    ctx.request_repaint();
+                });
+        });
+    }
+
+    pub fn redraw_textures(&mut self) {
+        self.time_textures.truncate(0);
+        self.throttle_texture = None;
+
         let (time_texture_sender, time_texture_receiver) = channel();
         let (throttle_texture_sender, throttle_texture_receiver) = channel();
 
-        let chunks = self.chunks.clone();
-        let colorgrad_lookup = self.colorgrad_lookup.clone();
+        let fft_size = self.fft_settings.size;
+
+        let chunks = self.chunks.clone(); // TODO
+        let mut fft_settings = self.fft_settings.clone();
         let ctx = self.ctx.clone();
         execute(async move {
             let max = 0.75 * chunks.iter()
@@ -147,27 +267,17 @@ impl FftAxis {
                 .fold(f64::NEG_INFINITY, |a, b| f64::max(a, b));
 
             for (i, columns) in chunks.chunks(TIME_DOMAIN_TEX_WIDTH).enumerate() {
-                let mut image = egui::ColorImage::new([columns.len(), FFT_SIZE/2], Color32::TRANSPARENT);
-
-                for x in 0..columns.len() {
-                    for y in 0..columns[x].fft.len() {
-                        let val = columns[x].fft[y];
-                        let f = f64::max(0.0, val) / max;
-                        let i = (f * (COLORGRAD_LOOKUP_SIZE as f64)) as usize;
-                        let i = usize::min(i, COLORGRAD_LOOKUP_SIZE - 1);
-                        image[(x, y)] = colorgrad_lookup[i];
-                    }
-                }
-
-                let tex_name = format!("tex_{:?}", i);
-                let tex_handle = ctx.load_texture(tex_name, image, Default::default());
-                time_texture_sender.send((columns[0].time, tex_handle)).unwrap();
+                let image = Self::create_image(columns, max, &mut fft_settings);
+                let tex_handle = ctx.load_texture(format!("tex_{:?}", i), image, Default::default());
+                let start = columns.first().unwrap().time;
+                let end = columns.last().unwrap().time;
+                time_texture_sender.send((start, end, tex_handle)).unwrap();
                 ctx.request_repaint();
             }
         });
 
-        let chunks = self.chunks.clone();
-        let colorgrad_lookup = self.colorgrad_lookup.clone();
+        let chunks = self.chunks.clone(); // TODO
+        let mut fft_settings = self.fft_settings.clone();
         let ctx = self.ctx.clone();
         execute(async move {
             const ARRAY_REPEAT_VALUE: std::vec::Vec<FftChunk> = Vec::new();
@@ -181,9 +291,9 @@ impl FftAxis {
             let mut throttle_averages = Vec::new();
             for bucket in throttle_buckets.into_iter() {
                 let size = bucket.len();
-                let avg: [f64; FFT_SIZE/2] = bucket.into_iter()
+                let avg = bucket.into_iter()
                     .map(|chunk| chunk.fft)
-                    .fold([0f64; FFT_SIZE/2], |a, b| {
+                    .fold(vec![0f64; fft_size/2], |a, b| {
                         a.into_iter()
                             .zip(b.into_iter())
                             .map(|(a, b)| {
@@ -195,15 +305,11 @@ impl FftAxis {
                                     b
                                 }
                             })
-                            .collect::<Vec<_>>()
-                            .try_into()
-                            .unwrap()
+                            .collect()
                     })
                     .into_iter()
                     .map(|v| v / (size as f64))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
+                    .collect::<Vec<_>>();
                 throttle_averages.push(avg);
             }
 
@@ -211,15 +317,12 @@ impl FftAxis {
                 .map(|chunk| chunk.iter().fold(f64::NEG_INFINITY, |a, b| f64::max(a, *b)))
                 .fold(f64::NEG_INFINITY, |a, b| f64::max(a, b));
 
-            let mut image = egui::ColorImage::new([THROTTLE_DOMAIN_BUCKETS, FFT_SIZE/2], Color32::TRANSPARENT);
+            let mut image = egui::ColorImage::new([THROTTLE_DOMAIN_BUCKETS, fft_size/2], Color32::TRANSPARENT);
 
             for x in 0..THROTTLE_DOMAIN_BUCKETS {
-                for y in 0..FFT_SIZE/2 {
+                for y in 0..fft_size/2 {
                     let val = throttle_averages[x][y];
-                    let f = f64::max(0.0, val) / max;
-                    let i = (f * (COLORGRAD_LOOKUP_SIZE as f64)) as usize;
-                    let i = usize::min(i, COLORGRAD_LOOKUP_SIZE - 1);
-                    image[(x, y)] = colorgrad_lookup[i];
+                    image[(x, y)] = fft_settings.color_at(f64::max(0.0, val) / max);
                 }
             }
 
@@ -236,7 +339,7 @@ impl FftAxis {
         let chunks_done = if let Some(receiver) = &self.chunk_receiver {
             loop {
                 match receiver.try_recv() {
-                    Ok(chunk) => { self.chunks.push(chunk); },
+                    Ok(chunks) => { self.chunks.extend(chunks.into_iter()); },
                     Err(TryRecvError::Empty) => { break false; }
                     Err(TryRecvError::Disconnected) => { break true; }
                 }
@@ -247,13 +350,13 @@ impl FftAxis {
 
         if chunks_done {
             self.chunk_receiver = None;
-            self.recreate_textures();
+            self.redraw_textures();
         }
 
         if let Some(receiver) = &self.time_texture_receiver {
             loop {
                 match receiver.try_recv() {
-                    Ok((t, tex)) => { self.time_textures.push((t, tex)); },
+                    Ok((t_start, t_end, tex)) => { self.time_textures.push((t_start, t_end, tex)); },
                     Err(_) => { break; }
                 }
             }
@@ -266,8 +369,31 @@ impl FftAxis {
         }
     }
 
-    pub fn show_time(&mut self, ui: &mut egui::Ui) {
-        egui_plot::Plot::new(ui.next_auto_id())
+    pub fn set_fft_settings(&mut self, fft_settings: FftSettings) {
+        let old_fft_settings = self.fft_settings.clone();
+        self.fft_settings = fft_settings;
+
+        if self.fft_settings.needs_recalculating(&old_fft_settings) {
+            self.recalculate_ffts();
+        } else if self.fft_settings.needs_redrawing(&old_fft_settings) {
+            self.redraw_textures();
+        }
+    }
+
+    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
+        self.flight_data = fd;
+        self.recalculate_ffts();
+    }
+
+    pub fn show_time(&mut self, ui: &mut egui::Ui, total_width: f32) -> egui::Response {
+        let max_freq = self.flight_data.sample_rate() / 2.0;
+        let height = if ui.available_width() < total_width {
+            ui.available_height()
+        } else {
+            300.0
+        };
+
+        egui_plot::Plot::new("time")
             .legend(egui_plot::Legend::default())
             .set_margin_fraction(egui::Vec2::new(0.0, 0.0))
             .show_grid(false)
@@ -278,25 +404,36 @@ impl FftAxis {
             .include_y(1.0)
             .link_axis("time_vibes", true, true)
             .link_cursor("time_vibes", true, true)
-            .height(ui.available_height())
+            .y_axis_position(egui_plot::HPlacement::Right)
+            .y_axis_width(3)
+            .y_axis_formatter(move |gm, _, _| format!("{:.0}Hz", gm.value * max_freq))
+            .label_formatter(move |_name, val| format!("{:.0}Hz\n{:.3}s", val.y * max_freq, val.x))
+            .height(height)
             .show(ui, |plot_ui| {
-                let duration = self.time_textures.windows(2).next().map(|w| w[1].0 - w[0].0).unwrap_or(1.0);
-
-                for (t, texture) in self.time_textures.iter() {
+                for (t_start, t_end, texture) in self.time_textures.iter() {
+                    let center = (t_start + t_end) / 2.0;
+                    let duration = t_end - t_start;
                     let plot_image = egui_plot::PlotImage::new(
                         texture,
-                        egui_plot::PlotPoint::new(*t + duration / 2.0, 0.5),
+                        egui_plot::PlotPoint::new(center, 0.5),
                         egui::Vec2::new(duration as f32, 1.0),
                     );
 
                     plot_ui.image(plot_image);
                 }
             })
-            .response;
+            .response
     }
 
-    pub fn show_throttle(&mut self, ui: &mut egui::Ui) {
-        egui_plot::Plot::new(ui.next_auto_id())
+    pub fn show_throttle(&mut self, ui: &mut egui::Ui, total_width: f32) -> egui::Response {
+        let max_freq = self.flight_data.sample_rate() / 2.0;
+        let height = if ui.available_width() < total_width {
+            ui.available_height()
+        } else {
+            300.0
+        };
+
+        egui_plot::Plot::new("throttle")
             .legend(egui_plot::Legend::default())
             .set_margin_fraction(egui::Vec2::new(0.0, 0.0))
             .show_grid(false)
@@ -307,7 +444,13 @@ impl FftAxis {
             .include_y(1.0)
             .link_axis("throttle_vibes", true, true)
             .link_cursor("throttle_vibes", true, true)
-            .height(ui.available_height())
+            .x_axis_formatter(move |gm, _, _| format!("{:.0}%", gm.value * 100.0))
+            .y_axis_position(egui_plot::HPlacement::Right)
+            .y_axis_width(3)
+            .y_axis_formatter(move |gm, _, _| format!("{:.0}Hz", gm.value * max_freq))
+            .label_formatter(move |_, val| format!("{:.0}Hz\n{:.0}%", val.y * max_freq, val.x * 100.0))
+            .height(height)
+            .reset()
             .show(ui, |plot_ui| {
                 if let Some(texture) = self.throttle_texture.as_mut() {
                     let plot_image = egui_plot::PlotImage::new(
@@ -319,15 +462,19 @@ impl FftAxis {
                     plot_ui.image(plot_image);
                 }
             })
-            .response;
+            .response
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, domain: VibeDomain) {
+    pub fn show(&mut self, ui: &mut egui::Ui, domain: VibeDomain, total_width: f32) -> egui::Response {
         self.process_updates();
 
-        match domain {
-            VibeDomain::Time => self.show_time(ui),
-            VibeDomain::Throttle => self.show_throttle(ui)
+        if self.chunks.len() == 0 {
+            ui.label("")
+        } else {
+            match domain {
+                VibeDomain::Time => self.show_time(ui, total_width),
+                VibeDomain::Throttle => self.show_throttle(ui, total_width)
+            }
         }
     }
 }
@@ -337,96 +484,170 @@ struct FftVectorSeries {
 }
 
 impl FftVectorSeries {
-    pub fn new(ctx: &egui::Context, time: Vec<f64>, data: [Vec<f64>; 3], throttle: Vec<f64>) -> Self {
+    pub fn new(
+        ctx: &egui::Context,
+        fft_settings: FftSettings,
+        fd: Arc<FlightData>,
+        value_callback: fn(&FlightData) -> &[Vec<f64>; 3]
+    ) -> Self {
         let axes = [
-            FftAxis::new(ctx, time.clone(), data[0].clone(), throttle.clone()),
-            FftAxis::new(ctx, time.clone(), data[1].clone(), throttle.clone()),
-            FftAxis::new(ctx, time, data[2].clone(), throttle)
+            FftAxis::new(ctx, fft_settings.clone(), 0, fd.clone(), value_callback.clone()),
+            FftAxis::new(ctx, fft_settings.clone(), 1, fd.clone(), value_callback.clone()),
+            FftAxis::new(ctx, fft_settings.clone(), 2, fd, value_callback),
         ];
 
         Self { axes }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, domain: VibeDomain) {
-        for (i, axis) in self.axes.iter_mut().enumerate() {
-            ui.vertical(|ui| {
-                ui.set_height(ui.available_height() / (3 - i) as f32);
-                axis.show(ui, domain);
-            });
-        }
+    pub fn set_fft_settings(&mut self, fft_settings: FftSettings) {
+        self.axes[0].set_fft_settings(fft_settings.clone());
+        self.axes[1].set_fft_settings(fft_settings.clone());
+        self.axes[2].set_fft_settings(fft_settings);
+    }
+
+    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
+        self.axes[0].set_flight(fd.clone());
+        self.axes[1].set_flight(fd.clone());
+        self.axes[2].set_flight(fd);
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui, domain: VibeDomain, total_width: f32) -> egui::Response {
+        ui.vertical(|ui| {
+            for (i, axis) in self.axes.iter_mut().enumerate() {
+                ui.vertical(|ui| {
+                    ui.set_height(ui.available_height() / (3 - i) as f32);
+                    axis.show(ui, domain, total_width);
+                });
+            }
+        }).response
     }
 }
 
 pub struct VibeTab {
     domain: VibeDomain,
 
-    //gyro_raw_enabled: bool,
-    //gyro_filtered_enabled: bool,
-    //dterm_raw_enabled: bool,
-    //dterm_filtered_enabled: bool,
+    gyro_raw_enabled: bool,
+    gyro_filtered_enabled: bool,
+    dterm_raw_enabled: bool,
+    dterm_filtered_enabled: bool,
 
-    gyro_raw_ffts: Option<FftVectorSeries>,
-    gyro_filtered_ffts: Option<FftVectorSeries>,
-    //dterm_raw_ffts: Option<FftVectorSeries>,
-    //dterm_filtered_ffts: Option<FftVectorSeries>,
+    fft_settings: FftSettings,
+
+    gyro_raw_ffts: FftVectorSeries,
+    gyro_filtered_ffts: FftVectorSeries,
+    //dterm_raw_ffts: FftVectorSeries,
+    dterm_filtered_ffts: FftVectorSeries,
 }
 
 impl VibeTab {
-    pub fn new() -> Self {
+    pub fn new(ctx: &egui::Context, fd: Arc<FlightData>) -> Self {
+        let fft_settings = FftSettings::default();
+
+        // TODO: unwrap
+        let gyro_raw_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.gyro_unfilt.as_ref().unwrap().0);
+        let gyro_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.gyro_adc.as_ref().unwrap().0);
+        let dterm_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.d.as_ref().unwrap().0);
+
         Self {
             domain: VibeDomain::Time,
 
-            //gyro_raw_enabled: true,
-            //gyro_filtered_enabled: true,
-            //dterm_raw_enabled: false,
-            //dterm_filtered_enabled: false,
+            gyro_raw_enabled: fd.gyro_unfilt.as_ref().map(|v| v[0].len() > 0).unwrap_or(false),
+            gyro_filtered_enabled: true,
+            dterm_raw_enabled: false, // TODO
+            dterm_filtered_enabled: true,
 
-            gyro_raw_ffts: None,
-            gyro_filtered_ffts: None,
-            //dterm_raw_ffts: None,
-            //dterm_filtered_ffts: None,
+            fft_settings,
+
+            gyro_raw_ffts,
+            gyro_filtered_ffts,
+            //dterm_raw_ffts,
+            dterm_filtered_ffts,
         }
+    }
+
+    pub fn update_fft_settings(&mut self) {
+        self.gyro_raw_ffts.set_fft_settings(self.fft_settings.clone());
+        self.gyro_filtered_ffts.set_fft_settings(self.fft_settings.clone());
+        //self.dterm_raw_ffts.set_fft_settings(self.fft_settings.clone());
+        self.dterm_filtered_ffts.set_fft_settings(self.fft_settings.clone());
+    }
+
+    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
+        self.gyro_raw_ffts.set_flight(fd.clone());
+        self.gyro_filtered_ffts.set_flight(fd.clone());
+        //self.dterm_raw_ffts.set_flight(fd.clone());
+        self.dterm_filtered_ffts.set_flight(fd.clone());
     }
 
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
-        fd: &FlightData,
+        _fd: &FlightData,
         _timeseries_group: &mut TimeseriesGroup
     ) {
-        ui.horizontal(|ui| {
-            ui.label("Domain:");
-            ui.selectable_value(&mut self.domain, VibeDomain::Time, "🕙 Time");
-            ui.selectable_value(&mut self.domain, VibeDomain::Throttle, "🏃 Throttle");
+        let old_fft_settings = self.fft_settings.clone();
+        let fft_size = self.fft_settings.size;
+        let total_width = ui.available_width();
 
-            //ui.separator();
+        FlexLayout::new(1500.0, "Settings")
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("Domain:");
+                ui.selectable_value(&mut self.domain, VibeDomain::Time, "🕙 Time");
+                ui.selectable_value(&mut self.domain, VibeDomain::Throttle, "🏃 Throttle");
+            }).response)
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("Series:");
+                ui.toggle_value(&mut self.gyro_raw_enabled, "Gyro (raw)");
+                ui.toggle_value(&mut self.gyro_filtered_enabled, "Gyro (filtered)");
+                ui.toggle_value(&mut self.dterm_raw_enabled, "D term (raw)");
+                ui.toggle_value(&mut self.dterm_filtered_enabled, "D term (filtered)");
+            }).response)
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("FFT Size:");
+                for size in &FFT_SIZE_OPTIONS {
+                    ui.selectable_value(&mut self.fft_settings.size, *size, format!("{}", size));
+                }
+            }).response)
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("FFT Step Size:");
+                for value in &[1, 8, 32, 128, 256, 512, 1024] {
+                    ui.add_enabled_ui(*value <= fft_size, |ui| {
+                        ui.selectable_value(&mut self.fft_settings.step_size, *value, format!("{}", value))
+                    });
+                }
+            }).response)
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("Colorscheme:");
+                for value in &[Colorscheme::Turbo, Colorscheme::Viridis, Colorscheme::Inferno] {
+                    ui.selectable_value(&mut self.fft_settings.plot_colorscheme, *value, format!("{:?}", value));
+                }
+            }).response)
+            .show(ui);
 
-            //ui.label("Series:");
-            //ui.toggle_value(&mut self.gyro_raw_enabled, "Gyro (raw)");
-            //ui.toggle_value(&mut self.gyro_filtered_enabled, "Gyro (filtered)");
-            //ui.toggle_value(&mut self.dterm_raw_enabled, "D term (raw)");
-            //ui.toggle_value(&mut self.dterm_filtered_enabled, "D term (filtered)");
-        });
+        if self.fft_settings != old_fft_settings {
+            self.fft_settings.step_size = usize::min(self.fft_settings.step_size, self.fft_settings.size);
+            self.update_fft_settings();
+        }
 
         ui.separator();
 
-        if self.gyro_raw_ffts.is_none() {
-            self.gyro_raw_ffts = Some(FftVectorSeries::new(ui.ctx(), fd.times.clone(), fd.gyro_unfilt.clone().unwrap().0, fd.setpoint.as_ref().unwrap()[3].clone())); // TODO: unwrap
-        }
-
-        if self.gyro_filtered_ffts.is_none() {
-            self.gyro_filtered_ffts = Some(FftVectorSeries::new(ui.ctx(), fd.times.clone(), fd.gyro_adc.clone().unwrap().0, fd.setpoint.as_ref().unwrap()[3].clone())); // TODO: unwrap
-        }
-
-        let Some(gyro_raw_ffts) = self.gyro_raw_ffts.as_mut() else { return };
-        let Some(gyro_filtered_ffts) = self.gyro_filtered_ffts.as_mut() else { return };
-
-        ui.columns(2, |columns| {
-            columns[0].heading("Gyro (raw)");
-            gyro_raw_ffts.show(&mut columns[0], self.domain);
-
-            columns[1].heading("Gyro (filtered)");
-            gyro_filtered_ffts.show(&mut columns[1], self.domain);
-        });
+        FlexColumns::new(MIN_WIDE_WIDTH)
+            .column_enabled(self.gyro_raw_enabled, |ui| {
+                ui.heading("Gyro (raw)");
+                self.gyro_raw_ffts.show(ui, self.domain, total_width)
+            })
+            .column_enabled(self.gyro_filtered_enabled, |ui| {
+                ui.heading("Gyro (filtered)");
+                self.gyro_filtered_ffts.show(ui, self.domain, total_width)
+            })
+            .column_enabled(self.dterm_raw_enabled, |ui| {
+                ui.heading("D Term (raw)")
+                //self.dterm_raw_ffts.show(ui, self.domain, total_width)
+            })
+            .column_enabled(self.dterm_filtered_enabled, |ui| {
+                ui.heading("D Term (filtered)");
+                self.dterm_filtered_ffts.show(ui, self.domain, total_width)
+            })
+            .show(ui);
     }
 }

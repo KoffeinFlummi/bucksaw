@@ -217,6 +217,20 @@ impl FlightData {
         Ok(flight_data)
     }
 
+    // TODO: there's gotta be a better way to do this
+    pub fn sample_rate(&self) -> f64 {
+        const NUM_SAMPLES: usize = 100;
+        let mut samples: Vec<u32> = self.times
+            .windows(2)
+            .map(|w| ((w[1] - w[0]) * 1_000_000.0) as u32)
+            .take(NUM_SAMPLES)
+            .collect();
+        samples.sort();
+        let sample_interval = samples[NUM_SAMPLES/2];
+        let rate = 1_000_000.0 / (sample_interval as f64);
+        (rate / 100.0).round() * 100.0
+    }
+
     pub fn show(&self, ui: &mut egui::Ui) -> bool {
         egui::Grid::new(ui.next_auto_id())
             .num_columns(2)

@@ -10,13 +10,13 @@ anyhow = "1.0.86"
 itertools = "0.13.0"
 blackbox-log = "0.4.2"
 realfft = "3.3.0"
-colorgrad = "0.6.2"
+colorgrad = { version = "0.6.2", default-features = false }
 
-eframe = "0.27.2"
-egui = "0.27.2"
-egui_plot = "0.27.2"
-egui_extras = { version = "0.27.2", features = ["image", "http", "svg"] }
-image = { version = "0.25.1", features = ["png"] }
+eframe = { version = "0.27.2", default-features = false, features = ["glow", "x11", "wayland", "default_fonts"] }
+egui = { version = "0.27.2", default-features = false }
+egui_plot = { version = "0.27.2", default-features = false }
+egui_extras = { version = "0.27.2", default-features = false, features = ["image", "file"] }
+image = { version = "0.25.1", default-features = false, features = ["png"] }
 rfd = "0.13"
 
 egui_oszi = { git = "ssh://git@github.com/KoffeinFlummi/egui_oszi" }
@@ -34,6 +34,7 @@ futures = "0.3.28"
 # Only for WASM
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
+async-std = "1.12.0"
 
 [features]
 profiling = ["dep:puffin", "dep:puffin_egui"]

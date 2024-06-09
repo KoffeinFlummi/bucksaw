@@ -1,7 +1,7 @@
 use blackbox_log::headers::{Firmware, ParseError};
 use egui::Image;
 
-/// Giveis some of the types defined by blackbox_log crate methods to draw them
+/// Give some of the types defined by blackbox_log crate methods to draw them
 pub trait BlackboxUiExt {
     fn show(&self, ui: &mut egui::Ui);
 }
@@ -9,21 +9,20 @@ pub trait BlackboxUiExt {
 impl BlackboxUiExt for Firmware {
     fn show(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // TODO: add to assets?
-            match self {
+            let image = match self {
                 Firmware::Betaflight(_fv) => {
                     if ui.visuals().dark_mode {
-                        ui.image("https://betaflight.com/img/betaflight/icon_dark.svg");
+                        Image::new(egui::include_image!("../../assets/betaflight_icon_dark.png"))
                     } else {
-                        ui.image("https://betaflight.com/img/betaflight/icon_light.svg");
+                        Image::new(egui::include_image!("../../assets/betaflight_icon_light.png"))
                     }
                 }
                 Firmware::Inav(_fv) => {
-                    let url = "https://static.rcgroups.net/forums/attachments/6/1/0/3/7/6/a9088858-102-inav.png";
-                    let image = Image::new(url).max_height(10.0);
-                    ui.add(image);
+                    Image::new(egui::include_image!("../../assets/inav_icon.png"))
                 }
-            }
+            };
+
+            ui.add(image.max_height(10.0));
 
             ui.label(format!("{} {}", self.name(), self.version()));
         });

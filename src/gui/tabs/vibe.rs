@@ -6,7 +6,6 @@ use itertools::Itertools;
 
 use egui::Color32;
 use egui_oszi::TimeseriesGroup;
-use num_complex::Complex;
 
 use crate::flight_data::FlightData;
 use crate::gui::flex::*;
@@ -94,8 +93,8 @@ impl FftSettings {
 impl Default for FftSettings {
     fn default() -> Self {
         Self {
-            size: 1024,
-            step_size: 32,
+            size: 256,
+            step_size: 8,
             plot_colorscheme: Colorscheme::default(),
             plot_max: 10.0,
             color_lookup_table: None,
@@ -134,21 +133,29 @@ impl FftChunk {
     pub fn calculate(time: f64, data: &[f64], throttle: f64) -> Self {
         // convert to complex and apply hamming window
         let window = Self::hamming_window(data.len());
-        let mut data: Vec<Complex<f64>> = data
+        let mut input: Vec<_> = data.iter().zip(window.iter()).map(|(d, w)| d * w).collect();
+        //let mut data: Vec<Complex<f64>> = data
+        //    .into_iter()
+        //    .enumerate()
+        //    .map(|(i, r)| Complex::new(*r * window[i], 0.0))
+        //    .collect::<Vec<_>>()
+        //    .try_into()
+        //    .unwrap();
+
+        let planner = realfft::RealFftPlanner::<f64>::new()
+            .plan_fft_forward(data.len());
+        let mut output = planner.make_output_vec();
+        planner.process(&mut input, &mut output).unwrap();
+
+        //let fft = data[data.len()/2..]
+        //    .iter()
+        //    .map(|c| c.re.log10())
+        //    .collect();
+
+        let fft = output
             .into_iter()
-            .enumerate()
-            .map(|(i, r)| Complex::new(*r * window[i], 0.0))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        rustfft::FftPlanner::<f64>::new()
-            .plan_fft_forward(data.len())
-            .process(&mut data);
-
-        let fft = data[data.len()/2..]
-            .iter()
-            .map(|c| c.re.log10())
+            .rev()
+            .map(|c| (c.re.powi(2) + c.im.powi(2)).log10())
             .collect();
 
         Self {

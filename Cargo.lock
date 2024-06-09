@@ -643,11 +643,10 @@ dependencies = [
  "image 0.25.1",
  "itertools 0.13.0",
  "log",
- "num-complex",
  "puffin",
  "puffin_egui",
+ "realfft",
  "rfd",
- "rustfft",
  "wasm-bindgen-futures",
 ]
 
@@ -3345,6 +3344,15 @@ name = "rctree"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b42e27ef78c35d3998403c1d26f3efd9e135d3e5121b0a4845cc5cc27547f4f"
+
+[[package]]
+name = "realfft"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "953d9f7e5cdd80963547b456251296efc2626ed4e3cbf36c869d9564e0220571"
+dependencies = [
+ "rustfft",
+]
 
 [[package]]
 name = "redox_syscall"

@@ -16,7 +16,7 @@ eframe = { version = "0.27.2", default-features = false, features = ["glow", "x1
 egui = { version = "0.27.2", default-features = false }
 egui_plot = { version = "0.27.2", default-features = false }
 egui_extras = { version = "0.27.2", default-features = false, features = ["image", "file"] }
-image = { version = "0.25.1", default-features = false, features = ["png"] }
+image = { version = "0.24", default-features = false, features = ["png"] }
 rfd = "0.13"
 
 egui_oszi = { git = "ssh://git@github.com/KoffeinFlummi/egui_oszi" }

@@ -56,24 +56,24 @@ pub struct FlightData {
 
     // Known timeseries
     pub times: Vec<f64>,
-    pub acc_smooth: Option<VectorSeries<f64, 3>>,
-    pub gyro_unfilt: Option<VectorSeries<f64, 3>>,
-    pub gyro_adc: Option<VectorSeries<f64, 3>>,
-    pub battery_voltage: Option<Vec<f64>>,
-    pub battery_current: Option<Vec<f64>>,
-    pub rssi: Option<Vec<f64>>,
+    pub acc_smooth: Option<VectorSeries<f32, 3>>,
+    pub gyro_unfilt: Option<VectorSeries<f32, 3>>,
+    pub gyro_adc: Option<VectorSeries<f32, 3>>,
+    pub battery_voltage: Option<Vec<f32>>,
+    pub battery_current: Option<Vec<f32>>,
+    pub rssi: Option<Vec<f32>>,
 
-    pub rc_command: Option<VectorSeries<f64, 4>>,
-    pub setpoint: Option<VectorSeries<f64, 4>>,
+    pub rc_command: Option<VectorSeries<f32, 4>>,
+    pub setpoint: Option<VectorSeries<f32, 4>>,
 
-    pub p: Option<VectorSeries<f64, 3>>,
-    pub i: Option<VectorSeries<f64, 3>>,
-    pub d: Option<VectorSeries<f64, 3>>, // most of the time yaw does not have a d gain, but it is possible
-    pub f: Option<VectorSeries<f64, 3>>,
+    pub p: Option<VectorSeries<f32, 3>>,
+    pub i: Option<VectorSeries<f32, 3>>,
+    pub d: Option<VectorSeries<f32, 3>>, // most of the time yaw does not have a d gain, but it is possible
+    pub f: Option<VectorSeries<f32, 3>>,
 
     // TODO: num motors
-    pub motor: Option<VectorSeries<f64, 4>>,
-    pub erpm: Option<VectorSeries<f64, 4>>,
+    pub motor: Option<VectorSeries<f32, 4>>,
+    pub erpm: Option<VectorSeries<f32, 4>>,
 
     // Other values included in log
     pub main_values: HashMap<String, Vec<f64>>,
@@ -81,13 +81,15 @@ pub struct FlightData {
 }
 
 impl FlightData {
-    fn try_extract_vector<const N: usize>(&mut self, key: &'static str) -> Option<VectorSeries<f64, N>> {
+    fn try_extract_vector<const N: usize>(&mut self, key: &'static str) -> Option<VectorSeries<f32, N>> {
         let keys: Vec<String> = (0..N)
             .map(|i| format!("{}[{}]", key, i))
             .collect();
         if keys.iter().any(|k| self.main_values.contains_key(k)) {
-            let values: Vec<_> = keys.iter().map(|k| self.main_values.get(k).cloned().unwrap_or_default()).collect();
-            let series: [Vec<f64>; N] = values.try_into().unwrap();
+            let values: Vec<_> = keys.iter()
+                .map(|k| self.main_values.get(k).map(|vec| vec.iter().map(|v| *v as f32).collect()).unwrap_or_default())
+                .collect();
+            let series: [Vec<f32>; N] = values.try_into().unwrap();
             Some(VectorSeries(series))
         } else {
             None
@@ -107,9 +109,9 @@ impl FlightData {
         self.motor = self.try_extract_vector("motor");
         self.erpm = self.try_extract_vector("eRPM");
 
-        self.battery_voltage = self.main_values.get("vbatLatest").cloned();
-        self.battery_current = self.main_values.get("amperageLatest").cloned();
-        self.rssi = self.main_values.get("rssi").cloned();
+        self.battery_voltage = self.main_values.get("vbatLatest").map(|vec| vec.iter().map(|v| *v as f32).collect());
+        self.battery_current = self.main_values.get("amperageLatest").map(|vec| vec.iter().map(|v| *v as f32).collect());
+        self.rssi = self.main_values.get("rssi").map(|vec| vec.iter().map(|v| *v as f32).collect());
     }
 
     pub async fn parse(

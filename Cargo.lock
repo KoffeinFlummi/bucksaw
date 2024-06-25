@@ -964,7 +964,7 @@ dependencies = [
 [[package]]
 name = "egui_oszi"
 version = "0.1.0"
-source = "git+ssh://git@github.com/KoffeinFlummi/egui_oszi#e6e18469c7bd8e06bc65f56e16f4e7055d6bafe7"
+source = "git+ssh://git@github.com/KoffeinFlummi/egui_oszi#a3624e46bbf82a83c9d811c5898dc1bf7890126a"
 dependencies = [
  "eframe",
  "egui",

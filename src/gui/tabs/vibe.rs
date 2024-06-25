@@ -1,4 +1,4 @@
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::{Arc, OnceLock};
 
@@ -49,7 +49,7 @@ struct FftSettings {
     pub size: usize,
     pub step_size: usize,
     pub plot_colorscheme: Colorscheme,
-    pub plot_max: f64,
+    pub plot_max: f32,
     color_lookup_table: Option<(Colorscheme, [egui::Color32; COLORGRAD_LOOKUP_SIZE])>,
 }
 
@@ -73,8 +73,8 @@ impl FftSettings {
         self.color_lookup_table.as_ref().map(|(_, t)| t).unwrap()
     }
 
-    pub fn color_at(&mut self, f: f64) -> egui::Color32 {
-        let i = (f * (COLORGRAD_LOOKUP_SIZE as f64)) as usize;
+    pub fn color_at(&mut self, f: f32) -> egui::Color32 {
+        let i = (f * (COLORGRAD_LOOKUP_SIZE as f32)) as usize;
         let i = usize::min(i, COLORGRAD_LOOKUP_SIZE - 1);
         self.color_lookup_table()[i]
     }
@@ -105,20 +105,20 @@ impl Default for FftSettings {
 #[derive(Clone)]
 struct FftChunk {
     time: f64,
-    fft: Vec<f64>,
-    throttle: f64,
+    fft: Vec<f32>,
+    throttle: f32,
 }
 
 impl FftChunk {
-    pub fn hamming_window(fft_size: usize) -> &'static [f64] {
+    pub fn hamming_window(fft_size: usize) -> &'static [f32] {
         // TODO
-        static LOOKUP: OnceLock<[Vec<f64>; FFT_SIZE_OPTIONS.len()]> = OnceLock::new();
+        static LOOKUP: OnceLock<[Vec<f32>; FFT_SIZE_OPTIONS.len()]> = OnceLock::new();
         let lookup = LOOKUP.get_or_init(|| {
             FFT_SIZE_OPTIONS
                 .into_iter()
                 .map(|fft_size| {
                     (0..fft_size)
-                        .map(|i| 0.53836 * (1.0 - (2.0 * PI * (i as f64) / (fft_size as f64)).cos()))
+                        .map(|i| 0.53836 * (1.0 - (2.0 * PI * (i as f32) / (fft_size as f32)).cos()))
                         .collect()
                 })
                 .collect::<Vec<_>>()
@@ -130,27 +130,15 @@ impl FftChunk {
         &lookup[FFT_SIZE_OPTIONS.iter().position(|s| *s == fft_size).unwrap()]
     }
 
-    pub fn calculate(time: f64, data: &[f64], throttle: f64) -> Self {
+    pub fn calculate(time: f64, data: &[f32], throttle: f32) -> Self {
         // convert to complex and apply hamming window
         let window = Self::hamming_window(data.len());
         let mut input: Vec<_> = data.iter().zip(window.iter()).map(|(d, w)| d * w).collect();
-        //let mut data: Vec<Complex<f64>> = data
-        //    .into_iter()
-        //    .enumerate()
-        //    .map(|(i, r)| Complex::new(*r * window[i], 0.0))
-        //    .collect::<Vec<_>>()
-        //    .try_into()
-        //    .unwrap();
 
-        let planner = realfft::RealFftPlanner::<f64>::new()
+        let planner = realfft::RealFftPlanner::<f32>::new()
             .plan_fft_forward(data.len());
         let mut output = planner.make_output_vec();
         planner.process(&mut input, &mut output).unwrap();
-
-        //let fft = data[data.len()/2..]
-        //    .iter()
-        //    .map(|c| c.re.log10())
-        //    .collect();
 
         let fft = output
             .into_iter()
@@ -172,7 +160,7 @@ struct FftAxis {
 
     i: usize,
     flight_data: Arc<FlightData>,
-    value_callback: Box<fn(&FlightData) -> &[Vec<f64>; 3]>,
+    value_callback: Box<fn(&FlightData) -> &[Vec<f32>; 3]>,
 
     chunks: Vec<FftChunk>,
     chunk_receiver: Option<Receiver<Vec<FftChunk>>>,
@@ -188,7 +176,7 @@ impl FftAxis {
         fft_settings: FftSettings,
         i: usize,
         flight_data: Arc<FlightData>,
-        value_callback: fn(&FlightData) -> &[Vec<f64>; 3]
+        value_callback: fn(&FlightData) -> &[Vec<f32>; 3]
     ) -> Self {
         let mut new = Self {
             ctx: ctx.clone(),
@@ -209,13 +197,13 @@ impl FftAxis {
         new
     }
 
-    pub fn create_image(data: &[FftChunk], max: f64, fft_settings: &mut FftSettings) -> egui::ColorImage {
+    pub fn create_image(data: &[FftChunk], max: f32, fft_settings: &mut FftSettings) -> egui::ColorImage {
         let mut image = egui::ColorImage::new([data.len(), data[0].fft.len()], Color32::TRANSPARENT);
 
         for x in 0..data.len() {
             for y in 0..data[x].fft.len() {
                 let val = data[x].fft[y];
-                image[(x, y)] = fft_settings.color_at(f64::max(0.0, val) / max);
+                image[(x, y)] = fft_settings.color_at(f32::max(0.0, val) / max);
             }
         }
 
@@ -270,8 +258,8 @@ impl FftAxis {
         let ctx = self.ctx.clone();
         execute(async move {
             let max = 0.75 * chunks.iter()
-                .map(|chunk| chunk.fft.iter().fold(f64::NEG_INFINITY, |a, b| f64::max(a, *b)))
-                .fold(f64::NEG_INFINITY, |a, b| f64::max(a, b));
+                .map(|chunk| chunk.fft.iter().fold(f32::NEG_INFINITY, |a, b| f32::max(a, *b)))
+                .fold(f32::NEG_INFINITY, |a, b| f32::max(a, b));
 
             for (i, columns) in chunks.chunks(TIME_DOMAIN_TEX_WIDTH).enumerate() {
                 let image = Self::create_image(columns, max, &mut fft_settings);
@@ -290,7 +278,7 @@ impl FftAxis {
             const ARRAY_REPEAT_VALUE: std::vec::Vec<FftChunk> = Vec::new();
             let mut throttle_buckets: [Vec<FftChunk>; THROTTLE_DOMAIN_BUCKETS] = [ARRAY_REPEAT_VALUE; THROTTLE_DOMAIN_BUCKETS];
             for chunk in chunks {
-                let bucket_i = ((chunk.throttle / 1000.0) * THROTTLE_DOMAIN_BUCKETS as f64) as usize;
+                let bucket_i = ((chunk.throttle / 1000.0) * THROTTLE_DOMAIN_BUCKETS as f32) as usize;
                 let bucket_i = usize::min(bucket_i, THROTTLE_DOMAIN_BUCKETS - 1);
                 throttle_buckets[bucket_i].push(chunk);
             }
@@ -300,7 +288,7 @@ impl FftAxis {
                 let size = bucket.len();
                 let avg = bucket.into_iter()
                     .map(|chunk| chunk.fft)
-                    .fold(vec![0f64; fft_size/2], |a, b| {
+                    .fold(vec![0f32; fft_size/2], |a, b| {
                         a.into_iter()
                             .zip(b.into_iter())
                             .map(|(a, b)| {
@@ -315,21 +303,21 @@ impl FftAxis {
                             .collect()
                     })
                     .into_iter()
-                    .map(|v| v / (size as f64))
+                    .map(|v| v / (size as f32))
                     .collect::<Vec<_>>();
                 throttle_averages.push(avg);
             }
 
             let max = 0.75 * throttle_averages.iter()
-                .map(|chunk| chunk.iter().fold(f64::NEG_INFINITY, |a, b| f64::max(a, *b)))
-                .fold(f64::NEG_INFINITY, |a, b| f64::max(a, b));
+                .map(|chunk| chunk.iter().fold(f32::NEG_INFINITY, |a, b| f32::max(a, *b)))
+                .fold(f32::NEG_INFINITY, |a, b| f32::max(a, b));
 
             let mut image = egui::ColorImage::new([THROTTLE_DOMAIN_BUCKETS, fft_size/2], Color32::TRANSPARENT);
 
             for x in 0..THROTTLE_DOMAIN_BUCKETS {
                 for y in 0..fft_size/2 {
                     let val = throttle_averages[x][y];
-                    image[(x, y)] = fft_settings.color_at(f64::max(0.0, val) / max);
+                    image[(x, y)] = fft_settings.color_at(f32::max(0.0, val) / max);
                 }
             }
 
@@ -495,7 +483,7 @@ impl FftVectorSeries {
         ctx: &egui::Context,
         fft_settings: FftSettings,
         fd: Arc<FlightData>,
-        value_callback: fn(&FlightData) -> &[Vec<f64>; 3]
+        value_callback: fn(&FlightData) -> &[Vec<f32>; 3]
     ) -> Self {
         let axes = [
             FftAxis::new(ctx, fft_settings.clone(), 0, fd.clone(), value_callback.clone()),

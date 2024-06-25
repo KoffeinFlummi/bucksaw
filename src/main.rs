@@ -24,7 +24,7 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "blackbox-explore-rs",
+        "bucksaw",
         native_options,
         Box::new(|cc| Box::new(App::new(cc, path))),
     )

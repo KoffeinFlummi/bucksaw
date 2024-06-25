@@ -1,8 +1,8 @@
 [package]
-name = "blackbox-explore-rs"
+name = "bucksaw"
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/KoffeinFlummi/blackbox-explore-rs"
+repository = "https://github.com/KoffeinFlummi/bucksaw"
 
 [dependencies]
 log = "0.4.21"

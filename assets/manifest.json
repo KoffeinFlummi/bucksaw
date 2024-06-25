@@ -1,6 +1,6 @@
 {
-  "name": "blackbox-explore-rs",
-  "short_name": "blackbox-explore-rs",
+  "name": "bucksaw",
+  "short_name": "bucksaw",
   "icons": [
     {
       "src": "./icon-256.png",

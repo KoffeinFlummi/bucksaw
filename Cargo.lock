@@ -405,31 +405,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blackbox-explore-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "blackbox-log",
- "colorgrad",
- "eframe",
- "egui",
- "egui_extras",
- "egui_oszi",
- "egui_plot",
- "env_logger",
- "futures",
- "image 0.25.1",
- "itertools",
- "log",
- "puffin",
- "puffin_egui",
- "realfft",
- "rfd",
- "wasm-bindgen-futures",
-]
-
-[[package]]
 name = "blackbox-log"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -489,6 +464,31 @@ dependencies = [
  "futures-io",
  "futures-lite 2.3.0",
  "piper",
+]
+
+[[package]]
+name = "bucksaw"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "blackbox-log",
+ "colorgrad",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "egui_oszi",
+ "egui_plot",
+ "env_logger",
+ "futures",
+ "image 0.25.1",
+ "itertools",
+ "log",
+ "puffin",
+ "puffin_egui",
+ "realfft",
+ "rfd",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

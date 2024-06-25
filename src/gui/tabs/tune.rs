@@ -52,7 +52,7 @@ impl TuneTab {
             300.0
         };
 
-        egui_plot::Plot::new("step_response")
+        egui_plot::Plot::new(ui.next_auto_id())
             .legend(egui_plot::Legend::default().position(Corner::LeftTop))
             .set_margin_fraction(egui::Vec2::new(0.0, 0.1))
             .show_grid(true)

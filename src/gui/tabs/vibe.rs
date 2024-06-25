@@ -400,7 +400,7 @@ impl FftAxis {
             300.0
         };
 
-        egui_plot::Plot::new("time")
+        egui_plot::Plot::new(ui.next_auto_id())
             .legend(egui_plot::Legend::default())
             .set_margin_fraction(egui::Vec2::new(0.0, 0.0))
             .show_grid(false)
@@ -440,7 +440,7 @@ impl FftAxis {
             300.0
         };
 
-        egui_plot::Plot::new("throttle")
+        egui_plot::Plot::new(ui.next_auto_id())
             .legend(egui_plot::Legend::default())
             .set_margin_fraction(egui::Vec2::new(0.0, 0.0))
             .show_grid(false)

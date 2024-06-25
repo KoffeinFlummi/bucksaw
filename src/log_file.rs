@@ -44,7 +44,7 @@ impl LogFile {
             ctx.request_repaint();
 
             #[cfg(target_arch = "wasm32")]
-            async_std::task::sleep(std::time::Duration::from_millis(100)).await;
+            async_std::task::sleep(std::time::Duration::from_secs_f32(0.00001)).await;
         }
 
         Self {

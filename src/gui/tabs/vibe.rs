@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 
 use itertools::Itertools;
 
-use egui::Color32;
+use egui::{Color32, DragValue};
 use egui_oszi::TimeseriesGroup;
 
 use crate::flight_data::FlightData;
@@ -15,9 +15,7 @@ use crate::iter::IterExt;
 const COLORGRAD_LOOKUP_SIZE: usize = 128;
 const TIME_DOMAIN_TEX_WIDTH: usize = 1024;
 const THROTTLE_DOMAIN_BUCKETS: usize = 256;
-
 const FFT_SIZE_OPTIONS: [usize; 4] = [256, 512, 1024, 2048];
-
 const MIN_WIDE_WIDTH: f32 = 1000.0;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -255,14 +253,11 @@ impl FftAxis {
 
         let chunks = self.chunks.clone(); // TODO
         let mut fft_settings = self.fft_settings.clone();
+        let fft_max = self.fft_settings.plot_max;
         let ctx = self.ctx.clone();
         execute(async move {
-            let max = 0.75 * chunks.iter()
-                .map(|chunk| chunk.fft.iter().fold(f32::NEG_INFINITY, |a, b| f32::max(a, *b)))
-                .fold(f32::NEG_INFINITY, |a, b| f32::max(a, b));
-
             for (i, columns) in chunks.chunks(TIME_DOMAIN_TEX_WIDTH).enumerate() {
-                let image = Self::create_image(columns, max, &mut fft_settings);
+                let image = Self::create_image(columns, fft_max, &mut fft_settings);
                 let tex_handle = ctx.load_texture(format!("tex_{:?}", i), image, Default::default());
                 let start = columns.first().unwrap().time;
                 let end = columns.last().unwrap().time;
@@ -273,6 +268,7 @@ impl FftAxis {
 
         let chunks = self.chunks.clone(); // TODO
         let mut fft_settings = self.fft_settings.clone();
+        let fft_max = self.fft_settings.plot_max;
         let ctx = self.ctx.clone();
         execute(async move {
             const ARRAY_REPEAT_VALUE: std::vec::Vec<FftChunk> = Vec::new();
@@ -308,16 +304,12 @@ impl FftAxis {
                 throttle_averages.push(avg);
             }
 
-            let max = 0.75 * throttle_averages.iter()
-                .map(|chunk| chunk.iter().fold(f32::NEG_INFINITY, |a, b| f32::max(a, *b)))
-                .fold(f32::NEG_INFINITY, |a, b| f32::max(a, b));
-
             let mut image = egui::ColorImage::new([THROTTLE_DOMAIN_BUCKETS, fft_size/2], Color32::TRANSPARENT);
 
             for x in 0..THROTTLE_DOMAIN_BUCKETS {
                 for y in 0..fft_size/2 {
                     let val = throttle_averages[x][y];
-                    image[(x, y)] = fft_settings.color_at(f32::max(0.0, val) / max);
+                    image[(x, y)] = fft_settings.color_at(f32::max(0.0, val) / fft_max);
                 }
             }
 
@@ -616,6 +608,10 @@ impl VibeTab {
                 for value in &[Colorscheme::Turbo, Colorscheme::Viridis, Colorscheme::Inferno] {
                     ui.selectable_value(&mut self.fft_settings.plot_colorscheme, *value, format!("{:?}", value));
                 }
+            }).response)
+            .add(|ui| ui.horizontal(|ui| {
+                ui.label("FFTMax:");
+                ui.add(DragValue::new(&mut self.fft_settings.plot_max).clamp_range(0.0..=100.0).speed(0.01));
             }).response)
             .show(ui);
 

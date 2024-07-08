@@ -5,6 +5,8 @@ Tool for looking inside flight logs of drones using the Cleanflight family of fi
 
 Web Assembly Version: https://bucksaw.koffeinflummi.de/
 
+![](https://raw.githubusercontent.com/KoffeinFlummi/bucksaw/master/assets/screenshot.png)
+
 # Setup
 
 ## Native

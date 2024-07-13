@@ -158,7 +158,7 @@ struct FftAxis {
 
     i: usize,
     flight_data: Arc<FlightData>,
-    value_callback: Box<fn(&FlightData) -> &[Vec<f32>; 3]>,
+    value_callback: Box<fn(&FlightData) -> [Option<&Vec<f32>>; 3]>,
 
     chunks: Vec<FftChunk>,
     chunk_receiver: Option<Receiver<Vec<FftChunk>>>,
@@ -174,7 +174,7 @@ impl FftAxis {
         fft_settings: FftSettings,
         i: usize,
         flight_data: Arc<FlightData>,
-        value_callback: fn(&FlightData) -> &[Vec<f32>; 3]
+        value_callback: fn(&FlightData) -> [Option<&Vec<f32>>; 3]
     ) -> Self {
         let mut new = Self {
             ctx: ctx.clone(),
@@ -223,9 +223,8 @@ impl FftAxis {
         let fft_step_size = self.fft_settings.step_size;
         let ctx = self.ctx.clone();
         execute(async move {
-            let throttle = &fd.setpoint.as_ref().unwrap()[3];
-            let values = &(cb(&fd))[i];
-
+            let throttle = &fd.setpoint().unwrap()[3];
+            let Some(values) = &(cb(&fd))[i] else { return };
             let time_windows = fd.times.iter().copied().overlapping_windows(fft_size, fft_step_size);
             let data_windows = values.iter().copied().overlapping_windows(fft_size, fft_step_size);
             let throttle_windows = throttle.iter().copied().overlapping_windows(fft_size, fft_step_size);
@@ -475,7 +474,7 @@ impl FftVectorSeries {
         ctx: &egui::Context,
         fft_settings: FftSettings,
         fd: Arc<FlightData>,
-        value_callback: fn(&FlightData) -> &[Vec<f32>; 3]
+        value_callback: fn(&FlightData) -> [Option<&Vec<f32>>; 3]
     ) -> Self {
         let axes = [
             FftAxis::new(ctx, fft_settings.clone(), 0, fd.clone(), value_callback.clone()),
@@ -522,7 +521,6 @@ pub struct VibeTab {
 
     gyro_raw_ffts: FftVectorSeries,
     gyro_filtered_ffts: FftVectorSeries,
-    //dterm_raw_ffts: FftVectorSeries,
     dterm_filtered_ffts: FftVectorSeries,
 }
 
@@ -531,14 +529,18 @@ impl VibeTab {
         let fft_settings = FftSettings::default();
 
         // TODO: unwrap
-        let gyro_raw_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.gyro_unfilt.as_ref().unwrap().0);
-        let gyro_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.gyro_adc.as_ref().unwrap().0);
-        let dterm_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| &fd.d.as_ref().unwrap().0);
+        let gyro_raw_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| {
+            fd.gyro_unfiltered().unwrap().into_iter().map(|x| Some(x)).collect::<Vec<_>>().try_into().unwrap()
+        });
+        let gyro_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| {
+            fd.gyro_filtered().unwrap().into_iter().map(|x| Some(x)).collect::<Vec<_>>().try_into().unwrap()
+        });
+        let dterm_filtered_ffts = FftVectorSeries::new(ctx, fft_settings.clone(), fd.clone(), |fd: &FlightData| fd.d());
 
         Self {
             domain: VibeDomain::Time,
 
-            gyro_raw_enabled: fd.gyro_unfilt.as_ref().map(|v| v[0].len() > 0).unwrap_or(false),
+            gyro_raw_enabled: fd.gyro_unfiltered().map(|v| v[0].len() > 0).unwrap_or(false),
             gyro_filtered_enabled: true,
             dterm_raw_enabled: false, // TODO
             dterm_filtered_enabled: true,

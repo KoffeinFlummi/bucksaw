@@ -964,13 +964,14 @@ dependencies = [
 [[package]]
 name = "egui_oszi"
 version = "0.1.0"
-source = "git+https://github.com/KoffeinFlummi/egui_oszi#a3624e46bbf82a83c9d811c5898dc1bf7890126a"
+source = "git+https://github.com/KoffeinFlummi/egui_oszi#dd087b0032e838f66b14638ba91586b017448b0f"
 dependencies = [
  "eframe",
  "egui",
  "egui_extras",
  "egui_plot",
  "log",
+ "num-traits",
 ]
 
 [[package]]

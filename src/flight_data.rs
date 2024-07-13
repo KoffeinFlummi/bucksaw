@@ -10,41 +10,9 @@ use blackbox_log::units::FlagSet;
 
 use crate::gui::blackbox_ui_ext::*;
 
-// Since values are usually accessed by axis and not by time,
-// we don't use a vector type here and store all axes side by side.
-#[derive(Clone, Debug)]
-pub struct VectorSeries<T, const N: usize>(pub [Vec<T>; N]);
-
-impl<T, const N: usize> std::ops::Deref for VectorSeries<T, N> {
-    type Target = [Vec<T>; N];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T, const N: usize> VectorSeries<T, N> {
-}
-
-impl<T> VectorSeries<T, 3> {
-    pub fn x<'a>(&'a self) -> &'a Vec<T> {
-        &self.0[0]
-    }
-
-    pub fn y<'a>(&'a self) -> &'a Vec<T> {
-        &self.0[1]
-    }
-
-    pub fn z<'a>(&'a self) -> &'a Vec<T> {
-        &self.0[2]
-    }
-}
-
 #[derive(Clone)]
 pub struct FlightData {
     pub index: usize,
-
-    // Log file metadata
     pub firmware: Firmware,
     pub firmware_date: Option<String>,
     pub board_info: Option<String>,
@@ -53,67 +21,12 @@ pub struct FlightData {
     pub features: Vec<String>,
     pub esc_protocol: PwmProtocol,
     pub unknown_headers: HashMap<String, String>,
-
-    // Known timeseries
     pub times: Vec<f64>,
-    pub acc_smooth: Option<VectorSeries<f32, 3>>,
-    pub gyro_unfilt: Option<VectorSeries<f32, 3>>,
-    pub gyro_adc: Option<VectorSeries<f32, 3>>,
-    pub battery_voltage: Option<Vec<f32>>,
-    pub battery_current: Option<Vec<f32>>,
-    pub rssi: Option<Vec<f32>>,
-
-    pub rc_command: Option<VectorSeries<f32, 4>>,
-    pub setpoint: Option<VectorSeries<f32, 4>>,
-
-    pub p: Option<VectorSeries<f32, 3>>,
-    pub i: Option<VectorSeries<f32, 3>>,
-    pub d: Option<VectorSeries<f32, 3>>, // most of the time yaw does not have a d gain, but it is possible
-    pub f: Option<VectorSeries<f32, 3>>,
-
-    // TODO: num motors
-    pub motor: Option<VectorSeries<f32, 4>>,
-    pub erpm: Option<VectorSeries<f32, 4>>,
-
-    // Other values included in log
-    pub main_values: HashMap<String, Vec<f64>>,
+    pub main_values: HashMap<String, Vec<f32>>,
     pub main_units: HashMap<String, String>,
 }
 
 impl FlightData {
-    fn try_extract_vector<const N: usize>(&mut self, key: &'static str) -> Option<VectorSeries<f32, N>> {
-        let keys: Vec<String> = (0..N)
-            .map(|i| format!("{}[{}]", key, i))
-            .collect();
-        if keys.iter().any(|k| self.main_values.contains_key(k)) {
-            let values: Vec<_> = keys.iter()
-                .map(|k| self.main_values.get(k).map(|vec| vec.iter().map(|v| *v as f32).collect()).unwrap_or_default())
-                .collect();
-            let series: [Vec<f32>; N] = values.try_into().unwrap();
-            Some(VectorSeries(series))
-        } else {
-            None
-        }
-    }
-
-    pub fn extract_known_values(&mut self) {
-        self.acc_smooth = self.try_extract_vector("accSmooth");
-        self.gyro_unfilt = self.try_extract_vector("gyroUnfilt");
-        self.gyro_adc = self.try_extract_vector("gyroADC");
-        self.rc_command = self.try_extract_vector("rcCommand");
-        self.setpoint = self.try_extract_vector("setpoint");
-        self.p = self.try_extract_vector("axisP");
-        self.i = self.try_extract_vector("axisI");
-        self.d = self.try_extract_vector("axisD");
-        self.f = self.try_extract_vector("axisF");
-        self.motor = self.try_extract_vector("motor");
-        self.erpm = self.try_extract_vector("eRPM");
-
-        self.battery_voltage = self.main_values.get("vbatLatest").map(|vec| vec.iter().map(|v| *v as f32).collect());
-        self.battery_current = self.main_values.get("amperageLatest").map(|vec| vec.iter().map(|v| *v as f32).collect());
-        self.rssi = self.main_values.get("rssi").map(|vec| vec.iter().map(|v| *v as f32).collect());
-    }
-
     pub async fn parse(
         index: usize,
         headers: blackbox_log::headers::Headers<'_>,
@@ -157,12 +70,12 @@ impl FlightData {
 
                     for (def, value) in main_frame_defs.iter().zip(frame.iter()) {
                         let float = match value {
-                            blackbox_log::frame::MainValue::Amperage(val) => val.value,
-                            blackbox_log::frame::MainValue::Voltage(val) => val.value,
-                            blackbox_log::frame::MainValue::Acceleration(val) => val.value,
-                            blackbox_log::frame::MainValue::Rotation(val) => val.value.to_degrees(),
-                            blackbox_log::frame::MainValue::Unsigned(val) => val as f64,
-                            blackbox_log::frame::MainValue::Signed(val) => val as f64,
+                            blackbox_log::frame::MainValue::Amperage(val) => val.value as f32,
+                            blackbox_log::frame::MainValue::Voltage(val) => val.value as f32,
+                            blackbox_log::frame::MainValue::Acceleration(val) => val.value as f32,
+                            blackbox_log::frame::MainValue::Rotation(val) => val.value.to_degrees() as f32,
+                            blackbox_log::frame::MainValue::Unsigned(val) => val as f32,
+                            blackbox_log::frame::MainValue::Signed(val) => val as f32,
                         };
 
                         if !main_values.contains_key(def.name) {
@@ -188,7 +101,7 @@ impl FlightData {
             i = (i + 1) % 1000;
         }
 
-        let mut flight_data = Self {
+        Ok(Self {
             index,
             firmware: headers.firmware(),
             firmware_date: headers.firmware_date().map(|r| r.ok()).flatten().map(|dt| format!("{}", dt)),
@@ -199,26 +112,79 @@ impl FlightData {
             esc_protocol: headers.pwm_protocol(),
             unknown_headers: headers.unknown().iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
             times,
-            acc_smooth: None,
-            gyro_unfilt: None,
-            gyro_adc: None,
-            rc_command: None,
-            battery_voltage: None,
-            battery_current: None,
-            rssi: None,
-            setpoint: None,
-            p: None,
-            i: None,
-            d: None,
-            f: None,
-            motor: None,
-            erpm: None,
             main_values,
             main_units,
-        };
-        flight_data.extract_known_values();
+        })
+    }
 
-        Ok(flight_data)
+    fn get_vector_series<const N: usize>(&self, series_name: &str) -> Option<[&Vec<f32>; N]> {
+        (0..N).map(|i| self.main_values.get(&format!("{}[{}]", series_name, i)))
+            .collect::<Option<Vec<_>>>()
+            .and_then(|v| v.try_into().ok())
+    }
+
+    pub fn gyro_unfiltered(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("gyroUnfilt")
+    }
+
+    pub fn gyro_filtered(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("gyroADC")
+    }
+
+    pub fn accel(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("accSmooth")
+    }
+
+    pub fn rc_command(&self) -> Option<[&Vec<f32>; 4]> {
+        self.get_vector_series("rcCommand")
+    }
+
+    pub fn setpoint(&self) -> Option<[&Vec<f32>; 4]> {
+        self.get_vector_series("setpoint")
+    }
+
+    pub fn p(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("axisP")
+    }
+
+    pub fn i(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("axisI")
+    }
+
+    // Note the type signature change here, we might not have D gains for all axes
+    pub fn d(&self) -> [Option<&Vec<f32>>; 3] {
+        (0..3).map(|i| self.main_values.get(&format!("axisD[{}]", i)))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
+
+    pub fn f(&self) -> Option<[&Vec<f32>; 3]> {
+        self.get_vector_series("axisF")
+    }
+
+    pub fn motor(&self) -> Option<Vec<&Vec<f32>>> {
+        const N: usize = 4; // TODO
+        (0..N).map(|i| self.main_values.get(&format!("motor[{}]", i)))
+            .collect::<Option<Vec<_>>>()
+    }
+
+    pub fn electrical_rpm(&self) -> Option<Vec<&Vec<f32>>> {
+        const N: usize = 4; // TODO
+        (0..N).map(|i| self.main_values.get(&format!("eRPM[{}]", i)))
+            .collect::<Option<Vec<_>>>()
+    }
+
+    pub fn battery_voltage(&self) -> Option<&Vec<f32>> {
+        self.main_values.get("vbatLatest")
+    }
+
+    pub fn amperage(&self) -> Option<&Vec<f32>> {
+        self.main_values.get("amperageLatest")
+    }
+
+    pub fn rssi(&self) -> Option<&Vec<f32>> {
+        self.main_values.get("rssi")
     }
 
     // TODO: there's gotta be a better way to do this

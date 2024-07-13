@@ -1,19 +1,24 @@
 bucksaw
 =======
 
-Tool for looking inside flight logs of drones using the Cleanflight family of firmwares (Betaflight, INAV), analyzing tune, vibrations, etc. Still WIP.
+Tool for looking inside flight logs of drones using the Cleanflight family of firmwares (Betaflight, INAV). Primary use case is analyzing vibrations and tune performance. Still work in progress.
 
-Web Assembly Version: https://bucksaw.koffeinflummi.de/
+A Web Assembly version is publicly accessible at: https://bucksaw.koffeinflummi.de/
 
-![](https://raw.githubusercontent.com/KoffeinFlummi/bucksaw/master/assets/screenshot.png)
+The performance on the web version is obviously not quite up to par with the native version, but it requires no setup and works even on mobile. Be careful with larger FFT sizes, or just larger log files in general. All processing is done in Web Assembly in your browser, so your log file never leaves your device.
+
+![](https://raw.githubusercontent.com/KoffeinFlummi/bucksaw/master/assets/screenshots.png)
 
 # Setup
 
 ## Native
 
-`$ cargo run` to run, `$ cargo install --path .` to install.
+- Install Rust (https://rustup.rs/)
+- `$ cargo run` to run debug build.
+- `$ cargo install --path .` to install.
 
-## WASM
+## Web Assembly
 
 - `$ cargo install trunk`
-- `$ trunk serve --open`
+- `$ trunk serve --open` to start a local development server and open the result in the browser.
+- `$ trunk build --release` to build release files. Copy `/dist` folder to webserver of choice.

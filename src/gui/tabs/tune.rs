@@ -54,7 +54,7 @@ impl TuneTab {
         };
 
         egui_plot::Plot::new(ui.next_auto_id())
-            .legend(egui_plot::Legend::default().position(Corner::LeftTop))
+            .legend(egui_plot::Legend::default().position(Corner::RightBottom))
             .set_margin_fraction(egui::Vec2::new(0.0, 0.1))
             .show_grid(true)
             .allow_drag(false)

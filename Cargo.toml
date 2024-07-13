@@ -19,7 +19,7 @@ egui_extras = { version = "0.27.2", default-features = false, features = ["image
 image = { version = "0.24", default-features = false, features = ["png"] }
 rfd = "0.13"
 
-egui_oszi = { git = "ssh://git@github.com/KoffeinFlummi/egui_oszi" }
+egui_oszi = { git = "https://github.com/KoffeinFlummi/egui_oszi" }
 #egui_oszi = { path = "../egui_oszi" }
 
 # Used for profiling

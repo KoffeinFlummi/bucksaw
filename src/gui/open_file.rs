@@ -7,6 +7,8 @@ use std::io::Read;
 use std::fs::File;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+
+use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{channel, Receiver};
 
 use egui::ProgressBar;
@@ -15,7 +17,7 @@ use crate::log_file::*;
 use crate::utils::execute;
 
 pub struct OpenFileDialog {
-    file_receiver: Receiver<LogFile>,
+    file_receiver: Receiver<Option<LogFile>>,
     file_progress_receiver: Receiver<f32>,
     flight_progress_receiver: Receiver<f32>,
 
@@ -43,10 +45,12 @@ impl OpenFileDialog {
                     flight_progress_sender
                 ).await;
 
-                file_sender.send(log_data).unwrap();
-
-                ctx.request_repaint();
+                file_sender.send(Some(log_data)).unwrap();
+            } else {
+                file_sender.send(None).unwrap();
             }
+
+            ctx.request_repaint();
         });
 
         Self {
@@ -81,8 +85,7 @@ impl OpenFileDialog {
                 flight_progress_sender
             ).await;
 
-            file_sender.send(log_data).unwrap();
-
+            file_sender.send(Some(log_data)).unwrap();
             ctx.request_repaint();
         });
 
@@ -96,7 +99,7 @@ impl OpenFileDialog {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<LogFile> {
+    pub fn show(&mut self, ctx: &egui::Context) -> Result<Option<LogFile>, TryRecvError> {
         while let Ok(file_progress) = self.file_progress_receiver.try_recv() {
             self.file_progress = file_progress;
         }
@@ -132,6 +135,6 @@ impl OpenFileDialog {
             });
 
 
-        self.file_receiver.try_recv().ok()
+        self.file_receiver.try_recv()
     }
 }

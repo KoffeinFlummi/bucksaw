@@ -79,12 +79,12 @@ impl eframe::App for App {
         #[cfg(feature = "profiling")]
         puffin_egui::profiler_window(ctx);
 
-        let open_file_result = self.open_file_dialog.as_mut()
-            .map(|dialog| dialog.show(ctx))
-            .flatten();
-
-        if let Some(result) = open_file_result {
-            self.open_file(ctx, result);
+        if let Some(open_file_dialog) = self.open_file_dialog.as_mut() {
+            match open_file_dialog.show(ctx) {
+                Ok(Some(result)) => { self.open_file(ctx, result); },
+                Ok(None) => { self.open_file_dialog = None; },
+                Err(_) => {} // Not done yet.
+            }
         }
 
         let enabled = !self.open_file_dialog.is_some();

@@ -20,6 +20,7 @@ pub struct TuneTab {
 
 // TODO: duplication
 const MIN_WIDE_WIDTH: f32 = 1000.0;
+const AXIS_LABELS: [&'static str; 3] = ["Roll", "Pitch", "Yaw"];
 
 impl TuneTab {
     pub fn new(_ctx: &egui::Context, fd: Arc<FlightData>) -> Self {
@@ -31,18 +32,18 @@ impl TuneTab {
             pitch_plot: TimeseriesPlotMemory::new("pitch"),
             yaw_plot: TimeseriesPlotMemory::new("yaw"),
 
-            roll_step_response: calculate_step_response(&fd.times, &setpoints[0], &gyro[0]),
-            pitch_step_response: calculate_step_response(&fd.times, &setpoints[1], &gyro[1]),
-            yaw_step_response: calculate_step_response(&fd.times, &setpoints[2], &gyro[2]),
+            roll_step_response: calculate_step_response(&fd.times, &setpoints[0], &gyro[0], fd.sample_rate()),
+            pitch_step_response: calculate_step_response(&fd.times, &setpoints[1], &gyro[1], fd.sample_rate()),
+            yaw_step_response: calculate_step_response(&fd.times, &setpoints[2], &gyro[2], fd.sample_rate()),
         }
     }
 
     pub fn set_flight(&mut self, fd: Arc<FlightData>) {
         let setpoints = fd.setpoint.as_ref().unwrap(); // TODO
         let gyro = fd.gyro_adc.as_ref().unwrap(); // TODO
-        self.roll_step_response = calculate_step_response(&fd.times, &setpoints[0], &gyro[0]);
-        self.pitch_step_response = calculate_step_response(&fd.times, &setpoints[1], &gyro[1]);
-        self.yaw_step_response = calculate_step_response(&fd.times, &setpoints[2], &gyro[2]);
+        self.roll_step_response = calculate_step_response(&fd.times, &setpoints[0], &gyro[0], fd.sample_rate());
+        self.pitch_step_response = calculate_step_response(&fd.times, &setpoints[1], &gyro[1], fd.sample_rate());
+        self.yaw_step_response = calculate_step_response(&fd.times, &setpoints[2], &gyro[2], fd.sample_rate());
     }
 
     pub fn plot_step_response(ui: &mut egui::Ui, i: usize, step_response: &Vec<(f64, f64)>, total_width: f32) -> egui::Response {
@@ -67,8 +68,9 @@ impl TuneTab {
             .show(ui, |plot_ui| {
                 let points = PlotPoints::new(step_response.iter().map(|(x, y)| [*x, *y]).collect());
                 let egui_line = egui_plot::Line::new(points)
-                    .name("Step Response"); // TODO: color
-
+                    .name(format!("Step Response ({})", AXIS_LABELS[i]))
+                    .color(egui::Color32::from_rgb(0xaf, 0x3a, 0x03))
+                    .width(2.0);
                 plot_ui.line(egui_line);
             })
             .response
@@ -95,37 +97,38 @@ impl TuneTab {
                         300.0
                     };
 
+                    let label = AXIS_LABELS[i];
                     ui.add(
                         TimeseriesPlot::new(plot)
                             .group(timeseries_group)
                             .legend(Legend::default().position(Corner::LeftTop))
                             .height(height)
                             .line(
-                                TimeseriesLine::new("Gyro (unfilt.)").color(colors.gyro_unfiltered),
+                                TimeseriesLine::new(format!("Gyro ({}, unfilt.)", label)).color(colors.gyro_unfiltered),
                                 times.iter().copied().zip(fd.gyro_unfilt.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("Gyro").color(colors.gyro_filtered),
+                                TimeseriesLine::new(format!("Gyro ({})", label)).color(colors.gyro_filtered),
                                 times.iter().copied().zip(fd.gyro_adc.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("Setpoint").color(colors.setpoint),
+                                TimeseriesLine::new(format!("Setpoint ({})", label)).color(colors.setpoint),
                                 times.iter().copied().zip(fd.setpoint.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("P").color(colors.p),
+                                TimeseriesLine::new(format!("P ({})", label)).color(colors.p),
                                 times.iter().copied().zip(fd.p.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("I").color(colors.i),
+                                TimeseriesLine::new(format!("I ({})", label)).color(colors.i),
                                 times.iter().copied().zip(fd.i.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("D").color(colors.d),
+                                TimeseriesLine::new(format!("D ({})", label)).color(colors.d),
                                 times.iter().copied().zip(fd.d.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                             .line(
-                                TimeseriesLine::new("F").color(colors.f),
+                                TimeseriesLine::new(format!("F ({})", label)).color(colors.f),
                                 times.iter().copied().zip(fd.f.as_ref().map(|s| s[i].iter().copied()).unwrap_or_default())
                             )
                     );
@@ -133,7 +136,7 @@ impl TuneTab {
             }).response)
             .column(|ui| {
                 ui.vertical(|ui| {
-                    ui.heading("Step Response (TODO)");
+                    ui.heading("Step Response");
 
                     for (i, axis) in [&self.roll_step_response, &self.pitch_step_response, &self.yaw_step_response].iter().enumerate() {
                         Self::plot_step_response(ui, i, axis, total_width);

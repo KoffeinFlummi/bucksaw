@@ -2,6 +2,8 @@ mod plot;
 mod tune;
 mod vibe;
 
+use std::fmt::Display;
+
 pub use plot::*;
 pub use tune::*;
 pub use vibe::*;
@@ -11,16 +13,16 @@ pub enum FlightViewTab {
     #[default]
     Plot,
     Tune,
-    Vibe
+    Vibe,
 }
 
-impl ToString for FlightViewTab {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for FlightViewTab {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let val = match self {
             Self::Plot => "🗠  Plot",
             Self::Tune => "⛭  Tune",
             Self::Vibe => "💃 Vibe",
-        }.to_string()
+        };
+        write!(f, "{val}",)
     }
 }
-

@@ -2,10 +2,10 @@
 
 mod flight_data;
 mod gui;
-mod log_file;
-mod utils;
 mod iter;
+mod log_file;
 mod step_response;
+mod utils;
 
 use gui::App;
 
@@ -20,7 +20,7 @@ fn main() -> eframe::Result<()> {
     puffin::set_scopes_on(true);
 
     let args: Vec<_> = std::env::args().collect();
-    let path = args.get(1).map(|s| PathBuf::from(s));
+    let path = args.get(1).map(PathBuf::from);
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(

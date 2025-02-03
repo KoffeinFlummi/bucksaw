@@ -1,5 +1,5 @@
-use std::sync::mpsc::Sender;
 use std::collections::HashMap;
+use std::sync::mpsc::Sender;
 
 use blackbox_log::frame::Frame;
 use blackbox_log::frame::FrameDef;
@@ -31,13 +31,14 @@ impl FlightData {
         index: usize,
         headers: blackbox_log::headers::Headers<'_>,
         ctx: &egui::Context,
-        progress_sender: Sender<f32>
+        progress_sender: Sender<f32>,
     ) -> Result<Self, ()> {
         let mut parser = headers.data_parser();
 
         let main_frame_defs: Vec<_> = parser.main_frame_def().iter().collect();
         let _slow_frame_defs: Vec<_> = parser.slow_frame_def().iter().collect();
-        let _gps_frame_defs: Option<Vec<_>> = parser.gps_frame_def().map(|defs| defs.iter().collect());
+        let _gps_frame_defs: Option<Vec<_>> =
+            parser.gps_frame_def().map(|defs| defs.iter().collect());
 
         let main_units: HashMap<String, String> = main_frame_defs
             .iter()
@@ -60,9 +61,9 @@ impl FlightData {
             match next {
                 blackbox_log::ParserEvent::Event(_event) => {
                     //println!("{}: {:?}", times.last().copied().unwrap_or_default(), event);
-                },
+                }
                 blackbox_log::ParserEvent::Main(frame) => {
-                    if frame.time().value < times.last().map(|l| *l).unwrap_or_default() {
+                    if frame.time().value < times.last().copied().unwrap_or_default() {
                         continue;
                     }
 
@@ -73,7 +74,9 @@ impl FlightData {
                             blackbox_log::frame::MainValue::Amperage(val) => val.value as f32,
                             blackbox_log::frame::MainValue::Voltage(val) => val.value as f32,
                             blackbox_log::frame::MainValue::Acceleration(val) => val.value as f32,
-                            blackbox_log::frame::MainValue::Rotation(val) => val.value.to_degrees() as f32,
+                            blackbox_log::frame::MainValue::Rotation(val) => {
+                                val.value.to_degrees() as f32
+                            }
                             blackbox_log::frame::MainValue::Unsigned(val) => val as f32,
                             blackbox_log::frame::MainValue::Signed(val) => val as f32,
                         };
@@ -82,14 +85,11 @@ impl FlightData {
                             main_values.insert(def.name.to_string(), Vec::new());
                         }
 
-                        main_values
-                            .get_mut(def.name)
-                            .unwrap()
-                            .push(float);
+                        main_values.get_mut(def.name).unwrap().push(float);
                     }
-                },
-                blackbox_log::ParserEvent::Slow(_frame) => {},
-                blackbox_log::ParserEvent::Gps(_frame) => {},
+                }
+                blackbox_log::ParserEvent::Slow(_frame) => {}
+                blackbox_log::ParserEvent::Gps(_frame) => {}
             }
 
             if i == 0 {
@@ -104,13 +104,25 @@ impl FlightData {
         Ok(Self {
             index,
             firmware: headers.firmware(),
-            firmware_date: headers.firmware_date().map(|r| r.ok()).flatten().map(|dt| format!("{}", dt)),
+            firmware_date: headers
+                .firmware_date()
+                .and_then(|r| r.ok())
+                .map(|dt| format!("{}", dt)),
             board_info: headers.board_info().map(|x| x.to_string()),
             craft_name: headers.craft_name().map(|x| x.to_string()),
             debug_mode: headers.debug_mode(),
-            features: headers.features().as_names().iter().map(|x| x.to_string()).collect(),
+            features: headers
+                .features()
+                .as_names()
+                .iter()
+                .map(|x| x.to_string())
+                .collect(),
             esc_protocol: headers.pwm_protocol(),
-            unknown_headers: headers.unknown().iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            unknown_headers: headers
+                .unknown()
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             times,
             main_values,
             main_units,
@@ -118,7 +130,8 @@ impl FlightData {
     }
 
     fn get_vector_series<const N: usize>(&self, series_name: &str) -> Option<[&Vec<f32>; N]> {
-        (0..N).map(|i| self.main_values.get(&format!("{}[{}]", series_name, i)))
+        (0..N)
+            .map(|i| self.main_values.get(&format!("{}[{}]", series_name, i)))
             .collect::<Option<Vec<_>>>()
             .and_then(|v| v.try_into().ok())
     }
@@ -153,7 +166,8 @@ impl FlightData {
 
     // Note the type signature change here, we might not have D gains for all axes
     pub fn d(&self) -> [Option<&Vec<f32>>; 3] {
-        (0..3).map(|i| self.main_values.get(&format!("axisD[{}]", i)))
+        (0..3)
+            .map(|i| self.main_values.get(&format!("axisD[{}]", i)))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap()
@@ -165,13 +179,15 @@ impl FlightData {
 
     pub fn motor(&self) -> Option<Vec<&Vec<f32>>> {
         const N: usize = 4; // TODO
-        (0..N).map(|i| self.main_values.get(&format!("motor[{}]", i)))
+        (0..N)
+            .map(|i| self.main_values.get(&format!("motor[{}]", i)))
             .collect::<Option<Vec<_>>>()
     }
 
     pub fn electrical_rpm(&self) -> Option<Vec<&Vec<f32>>> {
         const N: usize = 4; // TODO
-        (0..N).map(|i| self.main_values.get(&format!("eRPM[{}]", i)))
+        (0..N)
+            .map(|i| self.main_values.get(&format!("eRPM[{}]", i)))
             .collect::<Option<Vec<_>>>()
     }
 
@@ -190,13 +206,14 @@ impl FlightData {
     // TODO: there's gotta be a better way to do this
     pub fn sample_rate(&self) -> f64 {
         const NUM_SAMPLES: usize = 100;
-        let mut samples: Vec<u32> = self.times
+        let mut samples: Vec<u32> = self
+            .times
             .windows(2)
             .map(|w| ((w[1] - w[0]) * 1_000_000.0) as u32)
             .take(NUM_SAMPLES)
             .collect();
         samples.sort();
-        let sample_interval = samples[NUM_SAMPLES/2];
+        let sample_interval = samples[NUM_SAMPLES / 2];
         let rate = 1_000_000.0 / (sample_interval as f64);
         (rate / 100.0).round() * 100.0
     }
@@ -219,7 +236,11 @@ impl FlightData {
                 ui.end_row();
 
                 ui.label("Duration");
-                if let Some(duration) = self.times.first().and_then(|f| self.times.last().map(|l| l - f)) {
+                if let Some(duration) = self
+                    .times
+                    .first()
+                    .and_then(|f| self.times.last().map(|l| l - f))
+                {
                     let freq = (self.times.len() as f64) / duration;
                     ui.label(format!("{:.3}s (~{:.0}Hz)", duration, freq));
                 } else {

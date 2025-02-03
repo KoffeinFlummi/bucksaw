@@ -1,19 +1,19 @@
+pub mod blackbox_ui_ext;
 pub mod colors;
+pub mod flex;
 pub mod flight_view;
 pub mod open_file;
-pub mod blackbox_ui_ext;
 pub mod tabs;
-pub mod flex;
 
 use std::path::PathBuf;
 
 use egui::Layout;
 use egui::Vec2;
 
+use crate::gui::blackbox_ui_ext::*;
 use crate::gui::colors::Colors;
 use crate::gui::flight_view::*;
 use crate::gui::open_file::*;
-use crate::gui::blackbox_ui_ext::*;
 use crate::gui::tabs::*;
 use crate::log_file::*;
 
@@ -51,14 +51,14 @@ impl App {
     }
 
     fn open_file(&mut self, ctx: &egui::Context, file_data: LogFile) {
-        let flight_data = file_data.flights
+        let flight_data = file_data
+            .flights
             .iter()
             .filter_map(|result| result.as_ref().ok().cloned())
-            .rev()
-            .next()
+            .next_back()
             .clone();
 
-        let single_log = file_data.flights.len() == 0;
+        let single_log = file_data.flights.is_empty();
         self.file_data = Some(file_data);
         self.flight_view = flight_data.map(|data| FlightView::new(ctx, data.clone()));
         self.open_file_dialog = None;
@@ -81,53 +81,70 @@ impl eframe::App for App {
 
         if let Some(open_file_dialog) = self.open_file_dialog.as_mut() {
             match open_file_dialog.show(ctx) {
-                Ok(Some(result)) => { self.open_file(ctx, result); },
-                Ok(None) => { self.open_file_dialog = None; },
+                Ok(Some(result)) => {
+                    self.open_file(ctx, result);
+                }
+                Ok(None) => {
+                    self.open_file_dialog = None;
+                }
                 Err(_) => {} // Not done yet.
             }
         }
 
-        let enabled = !self.open_file_dialog.is_some();
+        let enabled = self.open_file_dialog.is_none();
 
         let width = ctx.available_rect().width();
         let narrow = width < 400.0;
 
-        egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(enabled);
-            ui.horizontal_centered(|ui| {
-                if ui.button(if self.left_panel_open { "⏴" } else { "☰" }).clicked() {
-                    self.left_panel_open = !self.left_panel_open;
-                }
+        egui::TopBottomPanel::top("menubar")
+            .min_height(30.0)
+            .max_height(30.0)
+            .show(ctx, |ui| {
+                ui.set_enabled(enabled);
+                ui.horizontal_centered(|ui| {
+                    if ui
+                        .button(if self.left_panel_open { "⏴" } else { "☰" })
+                        .clicked()
+                    {
+                        self.left_panel_open = !self.left_panel_open;
+                    }
 
-                // TODO: right panel (ℹ)
+                    // TODO: right panel (ℹ)
 
-                if ui.button(if narrow { "🗁 " } else { "🗁  Open File" }).clicked() {
-                    self.open_file_dialog = Some(OpenFileDialog::new(ui.ctx()));
-                    ctx.request_repaint();
-                }
+                    if ui
+                        .button(if narrow { "🗁 " } else { "🗁  Open File" })
+                        .clicked()
+                    {
+                        self.open_file_dialog = Some(OpenFileDialog::new(ui.ctx()));
+                        ctx.request_repaint();
+                    }
 
-                ui.separator();
-
-                const TABS: [FlightViewTab; 3] = [FlightViewTab::Plot, FlightViewTab::Tune, FlightViewTab::Vibe];
-                for tab in TABS.into_iter() {
-                    let label = if narrow {
-                        tab.to_string().split(' ').next().unwrap().to_string()
-                    } else {
-                        tab.to_string()
-                    };
-                    ui.selectable_value(&mut self.flight_view_tab, tab, label);
-                }
-
-                ui.separator();
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.hyperlink_to("", env!("CARGO_PKG_REPOSITORY"));
                     ui.separator();
-                    egui::widgets::global_dark_light_mode_switch(ui);
+
+                    const TABS: [FlightViewTab; 3] = [
+                        FlightViewTab::Plot,
+                        FlightViewTab::Tune,
+                        FlightViewTab::Vibe,
+                    ];
+                    for tab in TABS.into_iter() {
+                        let label = if narrow {
+                            tab.to_string().split(' ').next().unwrap().to_string()
+                        } else {
+                            tab.to_string()
+                        };
+                        ui.selectable_value(&mut self.flight_view_tab, tab, label);
+                    }
+
                     ui.separator();
+
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.hyperlink_to("", env!("CARGO_PKG_REPOSITORY"));
+                        ui.separator();
+                        egui::widgets::global_dark_light_mode_switch(ui);
+                        ui.separator();
+                    });
                 });
             });
-        });
 
         if self.left_panel_open {
             let panel_draw = |ui: &mut egui::Ui| {
@@ -142,11 +159,17 @@ impl eframe::App for App {
 
                     let colors = Colors::get(ui);
                     let selected_index = self.flight_view.as_ref().map(|view| view.data.index);
-                    let row_colors: Vec<_> = log.flights.iter().map(|result| match result {
-                        Err(_) => Some(colors.error.gamma_multiply(0.3)),
-                        Ok(flight) if selected_index == Some(flight.index) => Some(ui.visuals().selection.bg_fill.gamma_multiply(0.5)),
-                        Ok(_) => None,
-                    }).collect();
+                    let row_colors: Vec<_> = log
+                        .flights
+                        .iter()
+                        .map(|result| match result {
+                            Err(_) => Some(colors.error.gamma_multiply(0.3)),
+                            Ok(flight) if selected_index == Some(flight.index) => {
+                                Some(ui.visuals().selection.bg_fill.gamma_multiply(0.5))
+                            }
+                            Ok(_) => None,
+                        })
+                        .collect();
                     egui::Grid::new("flight_list")
                         .with_row_color(move |i, _style| row_colors.get(i).copied().flatten())
                         .num_columns(1)
@@ -164,24 +187,36 @@ impl eframe::App for App {
                                         } else {
                                             ui.label("⚠ Flight ");
                                         }
-                                        ui.monospace(format!("#{}", i+1));
+                                        ui.monospace(format!("#{}", i + 1));
 
                                         if let Ok(flight) = parse_result {
-                                            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                                                if ui.button("➡").clicked() {
-                                                    if let Some(fv) = self.flight_view.as_mut() {
-                                                        fv.set_flight(flight.clone());
-                                                    } else {
-                                                        self.flight_view = Some(FlightView::new(ui.ctx(), flight.clone()));
+                                            ui.with_layout(
+                                                Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui.button("➡").clicked() {
+                                                        if let Some(fv) = self.flight_view.as_mut()
+                                                        {
+                                                            fv.set_flight(flight.clone());
+                                                        } else {
+                                                            self.flight_view =
+                                                                Some(FlightView::new(
+                                                                    ui.ctx(),
+                                                                    flight.clone(),
+                                                                ));
+                                                        }
                                                     }
-                                                }
-                                            });
+                                                },
+                                            );
                                         }
                                     });
 
                                     match parse_result {
-                                        Ok(flight) => { flight.show(ui); },
-                                        Err(error) => { error.show(ui); }
+                                        Ok(flight) => {
+                                            flight.show(ui);
+                                        }
+                                        Err(error) => {
+                                            error.show(ui);
+                                        }
                                     }
                                 });
 

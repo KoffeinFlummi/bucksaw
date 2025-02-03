@@ -1,6 +1,9 @@
 use std::collections::VecDeque;
 
-pub struct OverlappingWindowIter<I> where I: Iterator {
+pub struct OverlappingWindowIter<I>
+where
+    I: Iterator,
+{
     iterator: I,
     buffer: VecDeque<I::Item>,
     window_size: usize,
@@ -20,7 +23,10 @@ impl<I: Iterator> OverlappingWindowIter<I> {
     }
 }
 
-impl<I: Iterator> Iterator for OverlappingWindowIter<I> where I::Item: Clone {
+impl<I: Iterator> Iterator for OverlappingWindowIter<I>
+where
+    I::Item: Clone,
+{
     type Item = Vec<I::Item>; // TODO
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -38,7 +44,7 @@ impl<I: Iterator> Iterator for OverlappingWindowIter<I> where I::Item: Clone {
         }
 
         let mut step = Vec::new();
-        for _i in 0..self.step_size {
+        for _ in 0..self.step_size {
             if let Some(next) = self.iterator.next() {
                 step.push(next);
             } else {
@@ -55,7 +61,10 @@ impl<I: Iterator> Iterator for OverlappingWindowIter<I> where I::Item: Clone {
     }
 }
 
-impl<I: ExactSizeIterator> ExactSizeIterator for OverlappingWindowIter<I> where I::Item: Clone {
+impl<I: ExactSizeIterator> ExactSizeIterator for OverlappingWindowIter<I>
+where
+    I::Item: Clone,
+{
     fn len(&self) -> usize {
         (self.iterator.len() - self.window_size) / self.step_size
     }
@@ -65,7 +74,10 @@ pub trait IterExt<I: Iterator> {
     fn overlapping_windows(self, window_size: usize, overlap: usize) -> OverlappingWindowIter<I>;
 }
 
-impl<I> IterExt<I> for I where I: Iterator + Sized {
+impl<I> IterExt<I> for I
+where
+    I: Iterator + Sized,
+{
     fn overlapping_windows(self, window_size: usize, overlap: usize) -> OverlappingWindowIter<I> {
         OverlappingWindowIter::new(self, window_size, overlap)
     }

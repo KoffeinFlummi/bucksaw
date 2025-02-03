@@ -39,7 +39,16 @@ const COLORS_DARK_MODE: Colors = Colors {
     triple_primary: [RED_LIGHT, GREEN_LIGHT, BLUE_LIGHT],
     triple_secondary: [RED, GREEN, BLUE],
     quad: [RED_LIGHT, GREEN_LIGHT, BLUE_LIGHT, PURPLE_LIGHT],
-    motors: [YELLOW_LIGHT, PURPLE_LIGHT, AQUA_LIGHT, ORANGE_LIGHT, RED_LIGHT, GREEN_LIGHT, BLUE_LIGHT, FG_DARK_MODE],
+    motors: [
+        YELLOW_LIGHT,
+        PURPLE_LIGHT,
+        AQUA_LIGHT,
+        ORANGE_LIGHT,
+        RED_LIGHT,
+        GREEN_LIGHT,
+        BLUE_LIGHT,
+        FG_DARK_MODE,
+    ],
 
     gyro_unfiltered: RED,
     gyro_filtered: RED_LIGHT,
@@ -61,7 +70,16 @@ const COLORS_LIGHT_MODE: Colors = Colors {
     triple_primary: [RED_DARK, GREEN_DARK, BLUE_DARK],
     triple_secondary: [RED, GREEN, BLUE],
     quad: [RED_DARK, GREEN_DARK, BLUE_DARK, PURPLE_DARK],
-    motors: [YELLOW_DARK, PURPLE_DARK, AQUA_DARK, ORANGE_DARK, RED_DARK, GREEN_DARK, BLUE_DARK, FG_LIGHT_MODE],
+    motors: [
+        YELLOW_DARK,
+        PURPLE_DARK,
+        AQUA_DARK,
+        ORANGE_DARK,
+        RED_DARK,
+        GREEN_DARK,
+        BLUE_DARK,
+        FG_LIGHT_MODE,
+    ],
 
     gyro_unfiltered: RED,
     gyro_filtered: RED_DARK,
@@ -100,7 +118,6 @@ pub struct Colors {
     pub error: Color32,
     pub selected: Color32,
 }
-
 
 impl Colors {
     pub fn get(ui: &egui::Ui) -> Self {

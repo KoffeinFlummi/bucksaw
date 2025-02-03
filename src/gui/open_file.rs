@@ -2,9 +2,9 @@ use egui::Align2;
 use egui::Vec2;
 
 #[cfg(not(target_arch = "wasm32"))]
-use std::io::Read;
-#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Read;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
@@ -42,8 +42,9 @@ impl OpenFileDialog {
                     bytes,
                     &ctx,
                     file_progress_sender,
-                    flight_progress_sender
-                ).await;
+                    flight_progress_sender,
+                )
+                .await;
 
                 file_sender.send(Some(log_data)).unwrap();
             } else {
@@ -82,8 +83,9 @@ impl OpenFileDialog {
                 bytes,
                 &ctx,
                 file_progress_sender,
-                flight_progress_sender
-            ).await;
+                flight_progress_sender,
+            )
+            .await;
 
             file_sender.send(Some(log_data)).unwrap();
             ctx.request_repaint();
@@ -133,7 +135,6 @@ impl OpenFileDialog {
                     ui.add(flight_pb);
                 });
             });
-
 
         self.file_receiver.try_recv()
     }

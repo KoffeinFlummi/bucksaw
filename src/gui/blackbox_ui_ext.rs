@@ -12,9 +12,13 @@ impl BlackboxUiExt for Firmware {
             let image = match self {
                 Firmware::Betaflight(_fv) => {
                     if ui.visuals().dark_mode {
-                        Image::new(egui::include_image!("../../assets/betaflight_icon_dark.png"))
+                        Image::new(egui::include_image!(
+                            "../../assets/betaflight_icon_dark.png"
+                        ))
                     } else {
-                        Image::new(egui::include_image!("../../assets/betaflight_icon_light.png"))
+                        Image::new(egui::include_image!(
+                            "../../assets/betaflight_icon_light.png"
+                        ))
                     }
                 }
                 Firmware::Inav(_fv) => {
@@ -37,7 +41,7 @@ impl BlackboxUiExt for ParseError {
                     ui.label("Unsupported FW version:");
                     fw.show(ui);
                 });
-            },
+            }
             ParseError::InvalidFirmware(fw_str) => {
                 ui.vertical(|ui| {
                     ui.label("Unsupported FW:");

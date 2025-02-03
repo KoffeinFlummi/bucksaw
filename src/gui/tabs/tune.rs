@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use egui_plot::{Corner, Legend, PlotPoints};
 use egui_oszi::{TimeseriesGroup, TimeseriesLine, TimeseriesPlot, TimeseriesPlotMemory};
+use egui_plot::{Corner, Legend, PlotPoints};
 
-use crate::gui::colors::Colors;
 use crate::flight_data::FlightData;
+use crate::gui::colors::Colors;
 use crate::gui::flex::FlexColumns;
 use crate::step_response::calculate_step_response;
 
@@ -20,33 +20,56 @@ pub struct TuneTab {
 
 // TODO: duplication
 const MIN_WIDE_WIDTH: f32 = 1000.0;
-const AXIS_LABELS: [&'static str; 3] = ["Roll", "Pitch", "Yaw"];
+const AXIS_LABELS: [&str; 3] = ["Roll", "Pitch", "Yaw"];
 
 impl TuneTab {
     pub fn new(_ctx: &egui::Context, fd: Arc<FlightData>) -> Self {
         let setpoints = fd.setpoint().unwrap(); // TODO
         let gyro = fd.gyro_filtered().unwrap(); // TODO
-        // TODO: calculate step response in background thread
+                                                // TODO: calculate step response in background thread
         Self {
             roll_plot: TimeseriesPlotMemory::new("roll"),
             pitch_plot: TimeseriesPlotMemory::new("pitch"),
             yaw_plot: TimeseriesPlotMemory::new("yaw"),
 
-            roll_step_response: calculate_step_response(&fd.times, &setpoints[0], &gyro[0], fd.sample_rate()),
-            pitch_step_response: calculate_step_response(&fd.times, &setpoints[1], &gyro[1], fd.sample_rate()),
-            yaw_step_response: calculate_step_response(&fd.times, &setpoints[2], &gyro[2], fd.sample_rate()),
+            roll_step_response: calculate_step_response(
+                &fd.times,
+                setpoints[0],
+                gyro[0],
+                fd.sample_rate(),
+            ),
+            pitch_step_response: calculate_step_response(
+                &fd.times,
+                setpoints[1],
+                gyro[1],
+                fd.sample_rate(),
+            ),
+            yaw_step_response: calculate_step_response(
+                &fd.times,
+                setpoints[2],
+                gyro[2],
+                fd.sample_rate(),
+            ),
         }
     }
 
     pub fn set_flight(&mut self, fd: Arc<FlightData>) {
         let setpoints = fd.setpoint().unwrap(); // TODO
         let gyro = fd.gyro_filtered().unwrap(); // TODO
-        self.roll_step_response = calculate_step_response(&fd.times, &setpoints[0], &gyro[0], fd.sample_rate());
-        self.pitch_step_response = calculate_step_response(&fd.times, &setpoints[1], &gyro[1], fd.sample_rate());
-        self.yaw_step_response = calculate_step_response(&fd.times, &setpoints[2], &gyro[2], fd.sample_rate());
+        self.roll_step_response =
+            calculate_step_response(&fd.times, setpoints[0], gyro[0], fd.sample_rate());
+        self.pitch_step_response =
+            calculate_step_response(&fd.times, setpoints[1], gyro[1], fd.sample_rate());
+        self.yaw_step_response =
+            calculate_step_response(&fd.times, setpoints[2], gyro[2], fd.sample_rate());
     }
 
-    pub fn plot_step_response(ui: &mut egui::Ui, i: usize, step_response: &Vec<(f64, f64)>, total_width: f32) -> egui::Response {
+    pub fn plot_step_response(
+        ui: &mut egui::Ui,
+        i: usize,
+        step_response: &[(f64, f64)],
+        total_width: f32,
+    ) -> egui::Response {
         let height = if ui.available_width() < total_width {
             ui.available_height() / (3 - i) as f32
         } else {
@@ -54,7 +77,7 @@ impl TuneTab {
         };
 
         egui_plot::Plot::new(ui.next_auto_id())
-            .legend(egui_plot::Legend::default().position(Corner::RightBottom))
+            .legend(Legend::default().position(Corner::RightBottom))
             .set_margin_fraction(egui::Vec2::new(0.0, 0.1))
             .show_grid(true)
             .allow_drag(false)
@@ -80,68 +103,106 @@ impl TuneTab {
         &mut self,
         ui: &mut egui::Ui,
         fd: &FlightData,
-        timeseries_group: &mut TimeseriesGroup
+        timeseries_group: &mut TimeseriesGroup,
     ) {
         let total_width = ui.available_width();
         let times = &fd.times;
         let colors = Colors::get(ui);
         FlexColumns::new(MIN_WIDE_WIDTH)
-            .column(|ui| ui.vertical(|ui| {
-                ui.heading("Time Domain");
+            .column(|ui| {
+                ui.vertical(|ui| {
+                    ui.heading("Time Domain");
 
-                let axes = [&mut self.roll_plot, &mut self.pitch_plot, &mut self.yaw_plot];
-                for (i, plot) in axes.into_iter().enumerate() {
-                    let height = if ui.available_width() < total_width {
-                        ui.available_height() / (3 - i) as f32
-                    } else {
-                        300.0
-                    };
+                    let axes = [
+                        &mut self.roll_plot,
+                        &mut self.pitch_plot,
+                        &mut self.yaw_plot,
+                    ];
+                    for (i, plot) in axes.into_iter().enumerate() {
+                        let height = if ui.available_width() < total_width {
+                            ui.available_height() / (3 - i) as f32
+                        } else {
+                            300.0
+                        };
 
-                    let label = AXIS_LABELS[i];
-                    ui.add(
-                        TimeseriesPlot::new(plot)
-                            .group(timeseries_group)
-                            .legend(Legend::default().position(Corner::LeftTop))
-                            .height(height)
-                            .line(
-                                TimeseriesLine::new(format!("Gyro ({}, unfilt.)", label)).color(colors.gyro_unfiltered),
-                                times.iter().copied().zip(fd.gyro_unfiltered().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("Gyro ({})", label)).color(colors.gyro_filtered),
-                                times.iter().copied().zip(fd.gyro_filtered().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("Setpoint ({})", label)).color(colors.setpoint),
-                                times.iter().copied().zip(fd.setpoint().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("P ({})", label)).color(colors.p),
-                                times.iter().copied().zip(fd.p().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("I ({})", label)).color(colors.i),
-                                times.iter().copied().zip(fd.i().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("D ({})", label)).color(colors.d),
-                                times.iter().copied().zip(fd.d()[i].map(|s| s.iter().copied()).unwrap_or_default())
-                            )
-                            .line(
-                                TimeseriesLine::new(format!("F ({})", label)).color(colors.f),
-                                times.iter().copied().zip(fd.f().map(|s| s[i].iter().copied()).unwrap_or_default())
-                            )
-                    );
-                }
-            }).response)
+                        let label = AXIS_LABELS[i];
+                        ui.add(
+                            TimeseriesPlot::new(plot)
+                                .group(timeseries_group)
+                                .legend(Legend::default().position(Corner::LeftTop))
+                                .height(height)
+                                .line(
+                                    TimeseriesLine::new(format!("Gyro ({}, unfilt.)", label))
+                                        .color(colors.gyro_unfiltered),
+                                    times.iter().copied().zip(
+                                        fd.gyro_unfiltered()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("Gyro ({})", label))
+                                        .color(colors.gyro_filtered),
+                                    times.iter().copied().zip(
+                                        fd.gyro_filtered()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("Setpoint ({})", label))
+                                        .color(colors.setpoint),
+                                    times.iter().copied().zip(
+                                        fd.setpoint()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("P ({})", label)).color(colors.p),
+                                    times.iter().copied().zip(
+                                        fd.p().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("I ({})", label)).color(colors.i),
+                                    times.iter().copied().zip(
+                                        fd.i().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("D ({})", label)).color(colors.d),
+                                    times.iter().copied().zip(
+                                        fd.d()[i].map(|s| s.iter().copied()).unwrap_or_default(),
+                                    ),
+                                )
+                                .line(
+                                    TimeseriesLine::new(format!("F ({})", label)).color(colors.f),
+                                    times.iter().copied().zip(
+                                        fd.f().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                    ),
+                                ),
+                        );
+                    }
+                })
+                .response
+            })
             .column(|ui| {
                 ui.vertical(|ui| {
                     ui.heading("Step Response");
 
-                    for (i, axis) in [&self.roll_step_response, &self.pitch_step_response, &self.yaw_step_response].iter().enumerate() {
+                    for (i, axis) in [
+                        &self.roll_step_response,
+                        &self.pitch_step_response,
+                        &self.yaw_step_response,
+                    ]
+                    .iter()
+                    .enumerate()
+                    {
                         Self::plot_step_response(ui, i, axis, total_width);
                     }
-                }).response
+                })
+                .response
             })
             .show(ui);
     }

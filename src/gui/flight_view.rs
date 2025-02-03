@@ -33,16 +33,14 @@ impl FlightView {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, tab: FlightViewTab) {
-        ui.vertical(|ui| {
-            match tab {
-                FlightViewTab::Plot => {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        self.plot_tab.show(ui, &self.data, &mut self.plot_group)
-                    });
-                }
-                FlightViewTab::Tune => self.tune_tab.show(ui, &self.data, &mut self.plot_group),
-                FlightViewTab::Vibe => self.vibe_tab.show(ui, &self.data, &mut self.plot_group),
+        ui.vertical(|ui| match tab {
+            FlightViewTab::Plot => {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.plot_tab.show(ui, &self.data, &mut self.plot_group)
+                });
             }
+            FlightViewTab::Tune => self.tune_tab.show(ui, &self.data, &mut self.plot_group),
+            FlightViewTab::Vibe => self.vibe_tab.show(ui, &self.data, &mut self.plot_group),
         });
     }
 }

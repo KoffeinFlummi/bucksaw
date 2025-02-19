@@ -12,12 +12,9 @@ impl LogFile {
     pub async fn parse(
         file_name: String,
         bytes: Vec<u8>,
-        ctx: &egui::Context,
         file_progress_sender: Sender<f32>,
         flight_progress_sender: Sender<f32>,
     ) -> Self {
-        ctx.request_repaint();
-
         let file = blackbox_log::File::new(&bytes);
 
         let mut flights = Vec::new();
@@ -31,7 +28,7 @@ impl LogFile {
 
             match header {
                 Ok(h) => {
-                    let flight = FlightData::parse(i, h, ctx, flight_progress_sender.clone())
+                    let flight = FlightData::parse(i, h, flight_progress_sender.clone())
                         .await
                         .unwrap();
                     flights.push(Ok(flight));
@@ -43,7 +40,6 @@ impl LogFile {
 
             let f = ((i + 1) as f32) / (file.log_count() as f32);
             file_progress_sender.send(f).unwrap();
-            ctx.request_repaint();
 
             #[cfg(target_arch = "wasm32")]
             async_std::task::sleep(std::time::Duration::from_secs_f32(0.00001)).await;

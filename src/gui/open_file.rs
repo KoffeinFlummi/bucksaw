@@ -14,7 +14,7 @@ use std::sync::mpsc::{channel, Receiver};
 use egui::ProgressBar;
 
 use crate::log_file::*;
-use crate::utils::execute;
+use crate::utils::execute_in_background;
 
 pub struct OpenFileDialog {
     file_receiver: Receiver<Option<LogFile>>,
@@ -26,32 +26,28 @@ pub struct OpenFileDialog {
 }
 
 impl OpenFileDialog {
-    pub fn new(ctx: &egui::Context) -> Self {
-        let (file_sender, file_receiver) = channel();
-        let (file_progress_sender, file_progress_receiver) = channel();
+    pub fn new(path: Option<PathBuf>) -> Self {
+        
+        // Setup 3 different channel for receiving:
+        // Flight loading % [0,1]
+        // File loading % [0,1]
+        // Option<LogFile> final result 
         let (flight_progress_sender, flight_progress_receiver) = channel();
-        let ctx = ctx.clone();
+        let (file_progress_sender, file_progress_receiver) = channel();
+        let (file_sender, file_receiver) = channel();
+        
+        // File parsing happens in the background task
+        execute_in_background(async move {
+            match Self::pick_read_file(path).await {
+                Some((name, bytes)) => {
+                    let log_data =
+                        LogFile::parse(name, bytes, file_progress_sender, flight_progress_sender)
+                            .await;
 
-        execute(async move {
-            if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
-                let name = file.file_name();
-                let bytes = file.read().await;
-
-                let log_data = LogFile::parse(
-                    name,
-                    bytes,
-                    &ctx,
-                    file_progress_sender,
-                    flight_progress_sender,
-                )
-                .await;
-
-                file_sender.send(Some(log_data)).unwrap();
-            } else {
-                file_sender.send(None).unwrap();
+                    file_sender.send(Some(log_data)).unwrap();
+                }
+                None => file_sender.send(None).unwrap(),
             }
-
-            ctx.request_repaint();
         });
 
         Self {
@@ -64,53 +60,38 @@ impl OpenFileDialog {
         }
     }
 
-    // TODO: clean up code duplication with new
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn from_path(ctx: &egui::Context, path: PathBuf) -> Self {
-        let (file_sender, file_receiver) = channel();
-        let (file_progress_sender, file_progress_receiver) = channel();
-        let (flight_progress_sender, flight_progress_receiver) = channel();
-        let ctx = ctx.clone();
-
-        execute(async move {
-            let name = path.file_name().unwrap().to_str().unwrap().into(); // TODO
-            let mut bytes = Vec::new();
-            let mut f = File::open(path).unwrap(); // TODO
-            f.read_to_end(&mut bytes).unwrap(); // TODO
-
-            let log_data = LogFile::parse(
-                name,
-                bytes,
-                &ctx,
-                file_progress_sender,
-                flight_progress_sender,
-            )
-            .await;
-
-            file_sender.send(Some(log_data)).unwrap();
-            ctx.request_repaint();
-        });
-
-        Self {
-            file_receiver,
-            file_progress_receiver,
-            flight_progress_receiver,
-
-            file_progress: 0.0,
-            flight_progress: 0.0,
+    // This function needs to be async due to blocking rfd::FileDialog is not available on wasm32
+    async fn pick_read_file(path: Option<PathBuf>) -> Option<(String, Vec<u8>)> {
+        match path {
+            Some(path) => {
+                let name = path
+                    .file_name()?
+                    .to_str()
+                    .to_owned()
+                    .map(|f| f.to_string())?;
+                let mut bytes = Vec::new();
+                let mut f = File::open(path).ok()?;
+                f.read_to_end(&mut bytes).ok()?;
+                Some((name, bytes))
+            }
+            None => {
+                let file = rfd::AsyncFileDialog::new().pick_file().await?;
+                Some((file.file_name(), file.read().await))
+            }
         }
     }
-
+    
+    // Show Loading&parsing progress bars popup
     pub fn show(&mut self, ctx: &egui::Context) -> Result<Option<LogFile>, TryRecvError> {
-        while let Ok(file_progress) = self.file_progress_receiver.try_recv() {
-            self.file_progress = file_progress;
-        }
-
-        while let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
+        if let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
             self.flight_progress = flight_progress;
         }
 
-        egui::Window::new("Open File")
+        if let Ok(file_progress) = self.file_progress_receiver.try_recv() {
+            self.file_progress = file_progress;
+        }
+
+        egui::Window::new("Parsing File")
             .anchor(Align2::CENTER_CENTER, Vec2::splat(0.0))
             .movable(false)
             .resizable(false)
@@ -121,13 +102,11 @@ impl OpenFileDialog {
                 ui.vertical(|ui| {
                     let file_pb = ProgressBar::new(self.file_progress)
                         .desired_width(ui.available_width())
-                        .text("text")
                         .show_percentage()
                         .animate(true);
 
                     let flight_pb = ProgressBar::new(self.flight_progress)
                         .desired_width(ui.available_width())
-                        .text("text")
                         .show_percentage()
                         .animate(true);
 

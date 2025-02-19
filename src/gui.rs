@@ -29,18 +29,10 @@ pub struct App {
 }
 
 impl App {
-    #[allow(unused_variables)]
     pub fn new(cc: &eframe::CreationContext, path: Option<PathBuf>) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        #[cfg(target_arch = "wasm32")]
-        let open_file_dialog = Some(OpenFileDialog::new(&cc.egui_ctx));
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let open_file_dialog = path.map(|p| {
-            OpenFileDialog::from_path(&cc.egui_ctx, p) // TODO: nicer error handling
-        });
-
+        let open_file_dialog = Some(OpenFileDialog::new(path));
         Self {
             file_data: None,
             open_file_dialog,
@@ -50,7 +42,7 @@ impl App {
         }
     }
 
-    fn open_file(&mut self, ctx: &egui::Context, file_data: LogFile) {
+    fn open_log(&mut self, ctx: &egui::Context, file_data: LogFile) {
         let flight_data = file_data
             .flights
             .iter()
@@ -73,16 +65,16 @@ impl eframe::App for App {
     /// Main draw method of the application
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         #[cfg(feature = "profiling")]
-        puffin::profile_function!();
-        #[cfg(feature = "profiling")]
-        puffin::GlobalProfiler::lock().new_frame();
-        #[cfg(feature = "profiling")]
-        puffin_egui::profiler_window(ctx);
+        {
+            puffin::profile_function!();
+            puffin::GlobalProfiler::lock().new_frame();
+            puffin_egui::profiler_window(ctx);
+        }
 
         if let Some(open_file_dialog) = self.open_file_dialog.as_mut() {
             match open_file_dialog.show(ctx) {
                 Ok(Some(result)) => {
-                    self.open_file(ctx, result);
+                    self.open_log(ctx, result);
                 }
                 Ok(None) => {
                     self.open_file_dialog = None;
@@ -115,7 +107,7 @@ impl eframe::App for App {
                         .button(if narrow { "🗁 " } else { "🗁  Open File" })
                         .clicked()
                     {
-                        self.open_file_dialog = Some(OpenFileDialog::new(ui.ctx()));
+                        self.open_file_dialog = Some(OpenFileDialog::new(None));
                         ctx.request_repaint();
                     }
 

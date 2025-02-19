@@ -30,7 +30,6 @@ impl FlightData {
     pub async fn parse(
         index: usize,
         headers: blackbox_log::headers::Headers<'_>,
-        ctx: &egui::Context,
         progress_sender: Sender<f32>,
     ) -> Result<Self, ()> {
         let mut parser = headers.data_parser();
@@ -57,44 +56,37 @@ impl FlightData {
         let mut times = Vec::new();
         let mut main_values = HashMap::new();
         let mut i = 0;
-        while let Some(next) = parser.next() {
-            match next {
-                blackbox_log::ParserEvent::Event(_event) => {
-                    //println!("{}: {:?}", times.last().copied().unwrap_or_default(), event);
+
+        while let Some(frame) = parser.next() {
+            if let blackbox_log::ParserEvent::Main(frame) = frame {
+                if frame.time().value < times.last().copied().unwrap_or_default() {
+                    continue;
                 }
-                blackbox_log::ParserEvent::Main(frame) => {
-                    if frame.time().value < times.last().copied().unwrap_or_default() {
-                        continue;
-                    }
 
-                    times.push(frame.time().value);
+                times.push(frame.time().value);
 
-                    for (def, value) in main_frame_defs.iter().zip(frame.iter()) {
-                        let float = match value {
-                            blackbox_log::frame::MainValue::Amperage(val) => val.value as f32,
-                            blackbox_log::frame::MainValue::Voltage(val) => val.value as f32,
-                            blackbox_log::frame::MainValue::Acceleration(val) => val.value as f32,
-                            blackbox_log::frame::MainValue::Rotation(val) => {
-                                val.value.to_degrees() as f32
-                            }
-                            blackbox_log::frame::MainValue::Unsigned(val) => val as f32,
-                            blackbox_log::frame::MainValue::Signed(val) => val as f32,
-                        };
-
-                        if !main_values.contains_key(def.name) {
-                            main_values.insert(def.name.to_string(), Vec::new());
+                for (def, value) in main_frame_defs.iter().zip(frame.iter()) {
+                    let float = match value {
+                        blackbox_log::frame::MainValue::Amperage(val) => val.value as f32,
+                        blackbox_log::frame::MainValue::Voltage(val) => val.value as f32,
+                        blackbox_log::frame::MainValue::Acceleration(val) => val.value as f32,
+                        blackbox_log::frame::MainValue::Rotation(val) => {
+                            val.value.to_degrees() as f32
                         }
+                        blackbox_log::frame::MainValue::Unsigned(val) => val as f32,
+                        blackbox_log::frame::MainValue::Signed(val) => val as f32,
+                    };
 
-                        main_values.get_mut(def.name).unwrap().push(float);
+                    if !main_values.contains_key(def.name) {
+                        main_values.insert(def.name.to_string(), Vec::new());
                     }
+
+                    main_values.get_mut(def.name).unwrap().push(float);
                 }
-                blackbox_log::ParserEvent::Slow(_frame) => {}
-                blackbox_log::ParserEvent::Gps(_frame) => {}
             }
 
             if i == 0 {
                 progress_sender.send(parser.stats().progress).unwrap();
-                ctx.request_repaint();
                 #[cfg(target_arch = "wasm32")]
                 async_std::task::sleep(std::time::Duration::from_secs_f32(0.00001)).await;
             }

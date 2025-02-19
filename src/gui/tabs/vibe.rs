@@ -10,7 +10,7 @@ use egui_oszi::TimeseriesGroup;
 use crate::flight_data::FlightData;
 use crate::gui::flex::*;
 use crate::iter::IterExt;
-use crate::utils::execute;
+use crate::utils::execute_in_background;
 
 const COLORGRAD_LOOKUP_SIZE: usize = 128;
 const TIME_DOMAIN_TEX_WIDTH: usize = 1024;
@@ -234,7 +234,7 @@ impl FftAxis {
         let fft_size = self.fft_settings.size;
         let fft_step_size = self.fft_settings.step_size;
         let ctx = self.ctx.clone();
-        execute(async move {
+        execute_in_background(async move {
             let throttle = &fd.setpoint().unwrap()[3];
             let Some(values) = &cb(&fd)[i] else { return };
             let time_windows = fd
@@ -279,7 +279,7 @@ impl FftAxis {
         let mut fft_settings = self.fft_settings.clone();
         let fft_max = self.fft_settings.plot_max;
         let ctx = self.ctx.clone();
-        execute(async move {
+        execute_in_background(async move {
             for (i, columns) in chunks.chunks(TIME_DOMAIN_TEX_WIDTH).enumerate() {
                 let image = Self::create_image(columns, fft_max, &mut fft_settings);
                 let tex_handle =
@@ -295,7 +295,7 @@ impl FftAxis {
         let mut fft_settings = self.fft_settings.clone();
         let fft_max = self.fft_settings.plot_max;
         let ctx = self.ctx.clone();
-        execute(async move {
+        execute_in_background(async move {
             const ARRAY_REPEAT_VALUE: Vec<FftChunk> = Vec::new();
             let mut throttle_buckets: [Vec<FftChunk>; THROTTLE_DOMAIN_BUCKETS] =
                 [ARRAY_REPEAT_VALUE; THROTTLE_DOMAIN_BUCKETS];

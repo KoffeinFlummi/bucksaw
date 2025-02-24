@@ -79,13 +79,13 @@ impl eframe::App for App {
 
         if let Some(open_file_dialog) = self.open_file_dialog.as_mut() {
             match open_file_dialog.show(ctx) {
-                Ok(Some(result)) => {
+                Some(Some(result)) => {
                     self.open_log(ctx, result);
                 }
-                Ok(None) => {
+                Some(None) => {
                     self.open_file_dialog = None;
                 }
-                Err(_) => {} // Not done yet.
+                None => {} // Not done yet.
             }
         }
 

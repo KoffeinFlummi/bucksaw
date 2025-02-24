@@ -8,16 +8,16 @@ use std::io::Read;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
-use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{channel, Receiver};
 
 use egui::ProgressBar;
 
 use crate::log_file::*;
 use crate::utils::execute_in_background;
+use crate::utils::BackgroundCompStore;
 
 pub struct OpenFileDialog {
-    file_receiver: Receiver<Option<LogFile>>,
+    file: BackgroundCompStore<Option<LogFile>>,
     file_progress_receiver: Receiver<f32>,
     flight_progress_receiver: Receiver<f32>,
 
@@ -34,6 +34,7 @@ impl OpenFileDialog {
         let (flight_progress_sender, flight_progress_receiver) = channel();
         let (file_progress_sender, file_progress_receiver) = channel();
         let (file_sender, file_receiver) = channel();
+        let file = BackgroundCompStore::new(file_receiver);
 
         // File parsing happens in the background task
         execute_in_background(async move {
@@ -50,7 +51,7 @@ impl OpenFileDialog {
         });
 
         Self {
-            file_receiver,
+            file,
             file_progress_receiver,
             flight_progress_receiver,
 
@@ -81,7 +82,7 @@ impl OpenFileDialog {
     }
 
     // Show Loading&parsing progress bars popup
-    pub fn show(&mut self, ctx: &egui::Context) -> Result<Option<LogFile>, TryRecvError> {
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<Option<LogFile>> {
         if let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
             self.flight_progress = flight_progress;
         }
@@ -114,6 +115,6 @@ impl OpenFileDialog {
                 });
             });
 
-        self.file_receiver.try_recv()
+        self.file.get().clone()
     }
 }

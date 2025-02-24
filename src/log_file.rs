@@ -4,6 +4,7 @@ use blackbox_log::headers::ParseError;
 
 use crate::flight_data::FlightData;
 
+#[derive(Clone)]
 pub struct LogFile {
     pub flights: Vec<Result<FlightData, ParseError>>,
 }

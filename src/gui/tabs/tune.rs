@@ -8,6 +8,8 @@ use crate::gui::colors::Colors;
 use crate::gui::flex::FlexColumns;
 use crate::step_response::calculate_step_response;
 
+use super::{MIN_WIDE_WIDTH, PLOT_HEIGHT};
+
 struct StepRespones {
     roll_step_response: Vec<(f64, f64)>,
     pitch_step_response: Vec<(f64, f64)>,
@@ -22,15 +24,12 @@ pub struct TuneTab {
     step_respones: StepRespones,
 }
 
-// TODO: duplication
-const MIN_WIDE_WIDTH: f32 = 1000.0;
 const AXIS_LABELS: [&str; 3] = ["Roll", "Pitch", "Yaw"];
 
 impl TuneTab {
     pub fn new(fd: Arc<FlightData>) -> Self {
-        let step_respones = Self::calculate_responses(&fd);
-        Self::calculate_responses(&fd);
         // TODO: calculate step response in background thread
+        let step_respones = Self::calculate_responses(&fd);
         Self {
             roll_plot: TimeseriesPlotMemory::new("roll"),
             pitch_plot: TimeseriesPlotMemory::new("pitch"),
@@ -41,8 +40,9 @@ impl TuneTab {
     }
 
     fn calculate_responses(fd: &Arc<FlightData>) -> StepRespones {
-        let setpoints = fd.setpoint().unwrap(); // TODO
-        let gyro = fd.gyro_filtered().unwrap(); // TODO
+        let empty_fallback = Vec::new();
+        let setpoints = fd.setpoint().unwrap_or([&empty_fallback; 4]);
+        let gyro = fd.gyro_filtered().unwrap_or([&empty_fallback; 3]);
         let sample_rate = fd.sample_rate();
         let roll_step_response =
             calculate_step_response(&fd.times, setpoints[0], gyro[0], sample_rate);
@@ -66,7 +66,7 @@ impl TuneTab {
         let height = if ui.available_width() < total_width {
             ui.available_height() / (3 - i) as f32
         } else {
-            300.0
+            PLOT_HEIGHT
         };
 
         egui_plot::Plot::new(ui.next_auto_id())
@@ -110,7 +110,7 @@ impl TuneTab {
                         let height = if ui.available_width() < total_width {
                             ui.available_height() / (3 - i) as f32
                         } else {
-                            300.0
+                            PLOT_HEIGHT
                         };
 
                         let label = AXIS_LABELS[i];

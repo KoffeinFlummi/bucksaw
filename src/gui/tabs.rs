@@ -8,6 +8,9 @@ pub use plot::*;
 pub use tune::*;
 pub use vibe::*;
 
+const PLOT_HEIGHT: f32 = 300.0;
+const MIN_WIDE_WIDTH: f32 = 1000.0;
+
 #[derive(Default, Clone, Copy, PartialEq)]
 pub enum FlightViewTab {
     #[default]

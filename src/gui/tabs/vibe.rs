@@ -10,11 +10,12 @@ use crate::gui::flex::*;
 use crate::iter::IterExt;
 use crate::utils::execute_in_background;
 
+use super::{MIN_WIDE_WIDTH, PLOT_HEIGHT};
+
 const COLORGRAD_LOOKUP_SIZE: usize = 128;
 const TIME_DOMAIN_TEX_WIDTH: usize = 1024;
 const THROTTLE_DOMAIN_BUCKETS: usize = 256;
 const FFT_SIZE_OPTIONS: [usize; 4] = [256, 512, 1024, 2048];
-const MIN_WIDE_WIDTH: f32 = 1000.0;
 
 #[derive(PartialEq, Clone, Copy)]
 enum VibeDomain {
@@ -406,7 +407,7 @@ impl FftAxis {
         let height = if ui.available_width() < total_width {
             ui.available_height()
         } else {
-            300.0
+            PLOT_HEIGHT
         };
 
         egui_plot::Plot::new(ui.next_auto_id())
@@ -446,7 +447,7 @@ impl FftAxis {
         let height = if ui.available_width() < total_width {
             ui.available_height()
         } else {
-            300.0
+            PLOT_HEIGHT
         };
 
         egui_plot::Plot::new(ui.next_auto_id())

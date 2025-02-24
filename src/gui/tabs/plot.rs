@@ -6,6 +6,8 @@ use egui_plot::{Corner, Legend};
 use crate::flight_data::FlightData;
 use crate::gui::colors::Colors;
 
+use super::PLOT_HEIGHT;
+
 pub struct PlotTab {
     gyro_plot: TimeseriesPlotMemory<f64, f32>,
     acc_plot: TimeseriesPlotMemory<f64, f32>,
@@ -16,9 +18,6 @@ pub struct PlotTab {
     erpm_plot: TimeseriesPlotMemory<f64, f32>,
     fd: Arc<FlightData>,
 }
-
-// TODO: duplication
-const PLOT_HEIGHT: f32 = 300.0;
 
 impl PlotTab {
     pub fn new(fd: Arc<FlightData>) -> Self {

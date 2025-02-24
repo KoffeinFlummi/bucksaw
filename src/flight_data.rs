@@ -10,6 +10,7 @@ use blackbox_log::units::FlagSet;
 
 use crate::gui::blackbox_ui_ext::*;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct FlightData {
     pub index: usize,
@@ -35,11 +36,8 @@ impl FlightData {
         let mut parser = headers.data_parser();
 
         let main_frame_defs: Vec<_> = parser.main_frame_def().iter().collect();
-        let _slow_frame_defs: Vec<_> = parser.slow_frame_def().iter().collect();
-        let _gps_frame_defs: Option<Vec<_>> =
-            parser.gps_frame_def().map(|defs| defs.iter().collect());
 
-        let main_units: HashMap<String, String> = main_frame_defs
+        let main_units = main_frame_defs
             .iter()
             .filter_map(|def| {
                 let unit = match def.unit {
@@ -54,7 +52,7 @@ impl FlightData {
             .collect();
 
         let mut times = Vec::new();
-        let mut main_values = HashMap::new();
+        let mut main_values: HashMap<String, Vec<f32>> = HashMap::new();
         let mut i = 0;
 
         while let Some(frame) = parser.next() {
@@ -77,11 +75,9 @@ impl FlightData {
                         blackbox_log::frame::MainValue::Signed(val) => val as f32,
                     };
 
-                    if !main_values.contains_key(def.name) {
-                        main_values.insert(def.name.to_string(), Vec::new());
-                    }
+                    let entry = main_values.entry(def.name.to_owned()).or_default();
 
-                    main_values.get_mut(def.name).unwrap().push(float);
+                    entry.push(float);
                 }
             }
 

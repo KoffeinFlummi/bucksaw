@@ -27,15 +27,14 @@ pub struct OpenFileDialog {
 
 impl OpenFileDialog {
     pub fn new(path: Option<PathBuf>) -> Self {
-        
         // Setup 3 different channel for receiving:
         // Flight loading % [0,1]
         // File loading % [0,1]
-        // Option<LogFile> final result 
+        // Option<LogFile> final result
         let (flight_progress_sender, flight_progress_receiver) = channel();
         let (file_progress_sender, file_progress_receiver) = channel();
         let (file_sender, file_receiver) = channel();
-        
+
         // File parsing happens in the background task
         execute_in_background(async move {
             match Self::pick_read_file(path).await {
@@ -80,7 +79,7 @@ impl OpenFileDialog {
             }
         }
     }
-    
+
     // Show Loading&parsing progress bars popup
     pub fn show(&mut self, ctx: &egui::Context) -> Result<Option<LogFile>, TryRecvError> {
         if let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {

@@ -6,10 +6,14 @@ pub mod open_file;
 pub mod tabs;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use blackbox_log::headers::ParseError;
 use egui::Layout;
 use egui::Vec2;
+use itertools::Itertools;
 
+use crate::flight_data::FlightData;
 use crate::gui::blackbox_ui_ext::*;
 use crate::gui::colors::Colors;
 use crate::gui::flight_view::*;
@@ -17,14 +21,13 @@ use crate::gui::open_file::*;
 use crate::gui::tabs::*;
 use crate::log_file::*;
 
+type FlightDataAndView = Vec<(Result<Arc<FlightData>, ParseError>, Option<FlightView>)>;
+
 pub struct App {
-    file_data: Option<LogFile>,
-
     open_file_dialog: Option<OpenFileDialog>,
-
     flight_view_tab: FlightViewTab,
-    flight_view: Option<FlightView>,
-
+    flights_data_views: FlightDataAndView,
+    selected: usize,
     left_panel_open: bool,
 }
 
@@ -34,25 +37,28 @@ impl App {
 
         let open_file_dialog = Some(OpenFileDialog::new(path));
         Self {
-            file_data: None,
             open_file_dialog,
             flight_view_tab: FlightViewTab::Plot,
-            flight_view: None,
+            flights_data_views: Default::default(),
+            selected: Default::default(),
             left_panel_open: true,
         }
     }
 
     fn open_log(&mut self, ctx: &egui::Context, file_data: LogFile) {
-        let flight_data = file_data
+        self.flights_data_views = file_data
             .flights
-            .iter()
-            .filter_map(|result| result.as_ref().ok().cloned())
-            .next_back()
-            .clone();
+            .into_iter()
+            .map(|f| match f {
+                Ok(f) => {
+                    let f = Arc::new(f);
+                    (Ok(f.clone()), Some(FlightView::new(ctx, f)))
+                }
+                Err(e) => (Err(e), None),
+            })
+            .collect_vec();
 
-        let single_log = file_data.flights.is_empty();
-        self.file_data = Some(file_data);
-        self.flight_view = flight_data.map(|data| FlightView::new(ctx, data.clone()));
+        let single_log = self.flights_data_views.len() == 1;
         self.open_file_dialog = None;
 
         if single_log || ctx.available_rect().width() < 1000.0 {
@@ -145,18 +151,13 @@ impl eframe::App for App {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.set_width(ui.available_width());
 
-                    let Some(log) = &self.file_data else {
-                        return;
-                    };
-
                     let colors = Colors::get(ui);
-                    let selected_index = self.flight_view.as_ref().map(|view| view.data.index);
-                    let row_colors: Vec<_> = log
-                        .flights
+                    let row_colors: Vec<_> = self
+                        .flights_data_views
                         .iter()
-                        .map(|result| match result {
+                        .map(|(result, _)| match result {
                             Err(_) => Some(colors.error.gamma_multiply(0.3)),
-                            Ok(flight) if selected_index == Some(flight.index) => {
+                            Ok(flight) if self.selected == flight.index => {
                                 Some(ui.visuals().selection.bg_fill.gamma_multiply(0.5))
                             }
                             Ok(_) => None,
@@ -169,7 +170,8 @@ impl eframe::App for App {
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
 
-                            for (i, parse_result) in log.flights.iter().enumerate() {
+                            for (i, (parse_result, _)) in self.flights_data_views.iter().enumerate()
+                            {
                                 ui.vertical(|ui| {
                                     ui.set_width(ui.available_width());
 
@@ -181,21 +183,12 @@ impl eframe::App for App {
                                         }
                                         ui.monospace(format!("#{}", i + 1));
 
-                                        if let Ok(flight) = parse_result {
+                                        if parse_result.is_ok() {
                                             ui.with_layout(
                                                 Layout::right_to_left(egui::Align::Center),
                                                 |ui| {
                                                     if ui.button("➡").clicked() {
-                                                        if let Some(fv) = self.flight_view.as_mut()
-                                                        {
-                                                            fv.set_flight(flight.clone());
-                                                        } else {
-                                                            self.flight_view =
-                                                                Some(FlightView::new(
-                                                                    ui.ctx(),
-                                                                    flight.clone(),
-                                                                ));
-                                                        }
+                                                        self.selected = i;
                                                     }
                                                 },
                                             );
@@ -232,7 +225,7 @@ impl eframe::App for App {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.set_enabled(enabled);
 
-                if let Some(view) = self.flight_view.as_mut() {
+                if let Some((_, Some(view))) = self.flights_data_views.get_mut(self.selected) {
                     view.show(ui, self.flight_view_tab);
                 }
             });

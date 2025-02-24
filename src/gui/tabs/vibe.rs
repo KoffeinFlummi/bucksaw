@@ -2,10 +2,8 @@ use std::f32::consts::PI;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::{Arc, OnceLock};
 
-use itertools::Itertools;
-
 use egui::{Color32, DragValue};
-use egui_oszi::TimeseriesGroup;
+use itertools::Itertools;
 
 use crate::flight_data::FlightData;
 use crate::gui::flex::*;
@@ -159,13 +157,15 @@ impl FftChunk {
     }
 }
 
+type FftAxisValueCallback = Box<fn(&FlightData) -> [Option<&Vec<f32>>; 3]>;
+
 struct FftAxis {
     ctx: egui::Context,
     fft_settings: FftSettings,
 
     i: usize,
     flight_data: Arc<FlightData>,
-    value_callback: Box<fn(&FlightData) -> [Option<&Vec<f32>>; 3]>,
+    value_callback: FftAxisValueCallback,
 
     chunks: Vec<FftChunk>,
     chunk_receiver: Option<Receiver<Vec<FftChunk>>>,
@@ -401,11 +401,6 @@ impl FftAxis {
         }
     }
 
-    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
-        self.flight_data = fd;
-        self.recalculate_ffts();
-    }
-
     pub fn show_time(&mut self, ui: &mut egui::Ui, total_width: f32) -> egui::Response {
         let max_freq = self.flight_data.sample_rate() / 2.0;
         let height = if ui.available_width() < total_width {
@@ -533,12 +528,6 @@ impl FftVectorSeries {
         self.axes[2].set_fft_settings(fft_settings);
     }
 
-    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
-        self.axes[0].set_flight(fd.clone());
-        self.axes[1].set_flight(fd.clone());
-        self.axes[2].set_flight(fd);
-    }
-
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -632,19 +621,7 @@ impl VibeTab {
             .set_fft_settings(self.fft_settings.clone());
     }
 
-    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
-        self.gyro_raw_ffts.set_flight(fd.clone());
-        self.gyro_filtered_ffts.set_flight(fd.clone());
-        //self.dterm_raw_ffts.set_flight(fd.clone());
-        self.dterm_filtered_ffts.set_flight(fd.clone());
-    }
-
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        _fd: &FlightData,
-        _timeseries_group: &mut TimeseriesGroup,
-    ) {
+    pub fn show(&mut self, ui: &mut egui::Ui) {
         let old_fft_settings = self.fft_settings.clone();
         let fft_size = self.fft_settings.size;
         let total_width = ui.available_width();

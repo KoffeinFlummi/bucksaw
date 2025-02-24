@@ -1,7 +1,9 @@
+type Cbs<'a> = Vec<Box<dyn FnOnce(&mut egui::Ui) -> egui::Response + 'a>>;
+
 pub struct FlexLayout<'a> {
     heading: String,
     min_width: f32,
-    cbs: Vec<Box<dyn FnOnce(&mut egui::Ui) -> egui::Response + 'a>>,
+    cbs: Cbs<'a>,
 }
 
 impl<'a> FlexLayout<'a> {
@@ -28,7 +30,7 @@ impl<'a> FlexLayout<'a> {
 
 pub struct FlexColumns<'a> {
     min_width: f32,
-    cbs: Vec<Box<dyn FnOnce(&mut egui::Ui) -> egui::Response + 'a>>,
+    cbs: Cbs<'a>,
 }
 
 impl egui::Widget for FlexLayout<'_> {

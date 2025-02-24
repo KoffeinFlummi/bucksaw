@@ -8,14 +8,18 @@ use crate::gui::colors::Colors;
 use crate::gui::flex::FlexColumns;
 use crate::step_response::calculate_step_response;
 
+struct StepRespones {
+    roll_step_response: Vec<(f64, f64)>,
+    pitch_step_response: Vec<(f64, f64)>,
+    yaw_step_response: Vec<(f64, f64)>,
+}
+
 pub struct TuneTab {
     roll_plot: TimeseriesPlotMemory<f64, f32>,
     pitch_plot: TimeseriesPlotMemory<f64, f32>,
     yaw_plot: TimeseriesPlotMemory<f64, f32>,
-
-    roll_step_response: Vec<(f64, f64)>,
-    pitch_step_response: Vec<(f64, f64)>,
-    yaw_step_response: Vec<(f64, f64)>,
+    fd: Arc<FlightData>,
+    step_respones: StepRespones,
 }
 
 // TODO: duplication
@@ -23,45 +27,34 @@ const MIN_WIDE_WIDTH: f32 = 1000.0;
 const AXIS_LABELS: [&str; 3] = ["Roll", "Pitch", "Yaw"];
 
 impl TuneTab {
-    pub fn new(_ctx: &egui::Context, fd: Arc<FlightData>) -> Self {
-        let setpoints = fd.setpoint().unwrap(); // TODO
-        let gyro = fd.gyro_filtered().unwrap(); // TODO
-                                                // TODO: calculate step response in background thread
+    pub fn new(fd: Arc<FlightData>) -> Self {
+        let step_respones = Self::calculate_responses(&fd);
+        Self::calculate_responses(&fd);
+        // TODO: calculate step response in background thread
         Self {
             roll_plot: TimeseriesPlotMemory::new("roll"),
             pitch_plot: TimeseriesPlotMemory::new("pitch"),
             yaw_plot: TimeseriesPlotMemory::new("yaw"),
-
-            roll_step_response: calculate_step_response(
-                &fd.times,
-                setpoints[0],
-                gyro[0],
-                fd.sample_rate(),
-            ),
-            pitch_step_response: calculate_step_response(
-                &fd.times,
-                setpoints[1],
-                gyro[1],
-                fd.sample_rate(),
-            ),
-            yaw_step_response: calculate_step_response(
-                &fd.times,
-                setpoints[2],
-                gyro[2],
-                fd.sample_rate(),
-            ),
+            step_respones,
+            fd,
         }
     }
 
-    pub fn set_flight(&mut self, fd: Arc<FlightData>) {
+    fn calculate_responses(fd: &Arc<FlightData>) -> StepRespones {
         let setpoints = fd.setpoint().unwrap(); // TODO
         let gyro = fd.gyro_filtered().unwrap(); // TODO
-        self.roll_step_response =
-            calculate_step_response(&fd.times, setpoints[0], gyro[0], fd.sample_rate());
-        self.pitch_step_response =
-            calculate_step_response(&fd.times, setpoints[1], gyro[1], fd.sample_rate());
-        self.yaw_step_response =
-            calculate_step_response(&fd.times, setpoints[2], gyro[2], fd.sample_rate());
+        let sample_rate = fd.sample_rate();
+        let roll_step_response =
+            calculate_step_response(&fd.times, setpoints[0], gyro[0], sample_rate);
+        let pitch_step_response =
+            calculate_step_response(&fd.times, setpoints[1], gyro[1], sample_rate);
+        let yaw_step_response =
+            calculate_step_response(&fd.times, setpoints[2], gyro[2], sample_rate);
+        StepRespones {
+            roll_step_response,
+            pitch_step_response,
+            yaw_step_response,
+        }
     }
 
     pub fn plot_step_response(
@@ -99,14 +92,9 @@ impl TuneTab {
             .response
     }
 
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        fd: &FlightData,
-        timeseries_group: &mut TimeseriesGroup,
-    ) {
+    pub fn show(&mut self, ui: &mut egui::Ui, timeseries_group: &mut TimeseriesGroup) {
         let total_width = ui.available_width();
-        let times = &fd.times;
+        let times = &self.fd.times;
         let colors = Colors::get(ui);
         FlexColumns::new(MIN_WIDE_WIDTH)
             .column(|ui| {
@@ -135,7 +123,8 @@ impl TuneTab {
                                     TimeseriesLine::new(format!("Gyro ({}, unfilt.)", label))
                                         .color(colors.gyro_unfiltered),
                                     times.iter().copied().zip(
-                                        fd.gyro_unfiltered()
+                                        self.fd
+                                            .gyro_unfiltered()
                                             .map(|s| s[i].iter().copied())
                                             .unwrap_or_default(),
                                     ),
@@ -144,7 +133,8 @@ impl TuneTab {
                                     TimeseriesLine::new(format!("Gyro ({})", label))
                                         .color(colors.gyro_filtered),
                                     times.iter().copied().zip(
-                                        fd.gyro_filtered()
+                                        self.fd
+                                            .gyro_filtered()
                                             .map(|s| s[i].iter().copied())
                                             .unwrap_or_default(),
                                     ),
@@ -153,7 +143,8 @@ impl TuneTab {
                                     TimeseriesLine::new(format!("Setpoint ({})", label))
                                         .color(colors.setpoint),
                                     times.iter().copied().zip(
-                                        fd.setpoint()
+                                        self.fd
+                                            .setpoint()
                                             .map(|s| s[i].iter().copied())
                                             .unwrap_or_default(),
                                     ),
@@ -161,25 +152,36 @@ impl TuneTab {
                                 .line(
                                     TimeseriesLine::new(format!("P ({})", label)).color(colors.p),
                                     times.iter().copied().zip(
-                                        fd.p().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                        self.fd
+                                            .p()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
                                     ),
                                 )
                                 .line(
                                     TimeseriesLine::new(format!("I ({})", label)).color(colors.i),
                                     times.iter().copied().zip(
-                                        fd.i().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                        self.fd
+                                            .i()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
                                     ),
                                 )
                                 .line(
                                     TimeseriesLine::new(format!("D ({})", label)).color(colors.d),
                                     times.iter().copied().zip(
-                                        fd.d()[i].map(|s| s.iter().copied()).unwrap_or_default(),
+                                        self.fd.d()[i]
+                                            .map(|s| s.iter().copied())
+                                            .unwrap_or_default(),
                                     ),
                                 )
                                 .line(
                                     TimeseriesLine::new(format!("F ({})", label)).color(colors.f),
                                     times.iter().copied().zip(
-                                        fd.f().map(|s| s[i].iter().copied()).unwrap_or_default(),
+                                        self.fd
+                                            .f()
+                                            .map(|s| s[i].iter().copied())
+                                            .unwrap_or_default(),
                                     ),
                                 ),
                         );
@@ -192,9 +194,9 @@ impl TuneTab {
                     ui.heading("Step Response");
 
                     for (i, axis) in [
-                        &self.roll_step_response,
-                        &self.pitch_step_response,
-                        &self.yaw_step_response,
+                        &self.step_respones.roll_step_response,
+                        &self.step_respones.pitch_step_response,
+                        &self.step_respones.yaw_step_response,
                     ]
                     .iter()
                     .enumerate()

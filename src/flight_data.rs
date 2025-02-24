@@ -166,15 +166,23 @@ impl FlightData {
     }
 
     pub fn motor(&self) -> Option<Vec<&Vec<f32>>> {
-        const N: usize = 4; // TODO
-        (0..N)
+        let motor_count = self
+            .main_values
+            .keys()
+            .filter(|k| k.contains("motor"))
+            .count();
+        (0..motor_count)
             .map(|i| self.main_values.get(&format!("motor[{}]", i)))
             .collect::<Option<Vec<_>>>()
     }
 
     pub fn electrical_rpm(&self) -> Option<Vec<&Vec<f32>>> {
-        const N: usize = 4; // TODO
-        (0..N)
+        let erpm_count = self
+            .main_values
+            .keys()
+            .filter(|k| k.contains("eRPM"))
+            .count();
+        (0..erpm_count)
             .map(|i| self.main_values.get(&format!("eRPM[{}]", i)))
             .collect::<Option<Vec<_>>>()
     }

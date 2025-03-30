@@ -12,8 +12,11 @@ fn fft_inverse(data: &[Complex32]) -> Vec<f32> {
     let mut input = data.to_vec();
     let planner = realfft::RealFftPlanner::<f32>::new().plan_fft_inverse(input.len() * 2 - 1);
     let mut output = planner.make_output_vec();
-    planner.process(&mut input, &mut output).unwrap();
-    output
+    if planner.process(&mut input, &mut output).is_ok() {
+        output
+    } else {
+        vec![0.0; input.len()]
+    }
 }
 
 pub fn calculate_step_response(

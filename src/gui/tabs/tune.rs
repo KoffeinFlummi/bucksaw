@@ -12,7 +12,7 @@ use crate::{flight_data::FlightData, utils::BackgroundCompStore};
 
 use super::{MIN_WIDE_WIDTH, PLOT_HEIGHT};
 
-struct StepRespones {
+struct StepResponses {
     roll_step_response: Vec<(f64, f64)>,
     pitch_step_response: Vec<(f64, f64)>,
     yaw_step_response: Vec<(f64, f64)>,
@@ -23,7 +23,7 @@ pub struct TuneTab {
     pitch_plot: TimeseriesPlotMemory<f64, f32>,
     yaw_plot: TimeseriesPlotMemory<f64, f32>,
     fd: Arc<FlightData>,
-    step_respones: BackgroundCompStore<StepRespones>,
+    step_responses: BackgroundCompStore<StepResponses>,
 }
 
 const AXIS_LABELS: [&str; 3] = ["Roll", "Pitch", "Yaw"];
@@ -32,19 +32,19 @@ impl TuneTab {
     pub fn new(fd: Arc<FlightData>) -> Self {
         // calculate step response in background thread
         let (sender, receiver) = channel();
-        let step_respones = BackgroundCompStore::new(receiver);
+        let step_responses = BackgroundCompStore::new(receiver);
 
         Self::calculate_responses(fd.clone(), sender);
         Self {
             roll_plot: TimeseriesPlotMemory::new("roll"),
             pitch_plot: TimeseriesPlotMemory::new("pitch"),
             yaw_plot: TimeseriesPlotMemory::new("yaw"),
-            step_respones,
+            step_responses,
             fd,
         }
     }
 
-    fn calculate_responses(fd: Arc<FlightData>, sender: Sender<StepRespones>) {
+    fn calculate_responses(fd: Arc<FlightData>, sender: Sender<StepResponses>) {
         execute_in_background(async move {
             let empty_fallback = Vec::new();
             let setpoints = fd.setpoint().unwrap_or([&empty_fallback; 4]);
@@ -56,7 +56,7 @@ impl TuneTab {
                 calculate_step_response(&fd.times, setpoints[1], gyro[1], sample_rate);
             let yaw_step_response =
                 calculate_step_response(&fd.times, setpoints[2], gyro[2], sample_rate);
-            let _ = sender.send(StepRespones {
+            let _ = sender.send(StepResponses {
                 roll_step_response,
                 pitch_step_response,
                 yaw_step_response,
@@ -100,7 +100,7 @@ impl TuneTab {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, timeseries_group: &mut TimeseriesGroup) {
-        if let Some(step_respones) = self.step_respones.get() {
+        if let Some(step_responses) = self.step_responses.get() {
             let total_width = ui.available_width();
             let times = &self.fd.times;
             let colors = Colors::get(ui);
@@ -206,9 +206,9 @@ impl TuneTab {
                         ui.heading("Step Response");
 
                         for (i, axis) in [
-                            &step_respones.roll_step_response,
-                            &step_respones.pitch_step_response,
-                            &step_respones.yaw_step_response,
+                            &step_responses.roll_step_response,
+                            &step_responses.pitch_step_response,
+                            &step_responses.yaw_step_response,
                         ]
                         .iter()
                         .enumerate()

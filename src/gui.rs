@@ -71,11 +71,11 @@ impl eframe::App for App {
     /// Main draw method of the application
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         #[cfg(feature = "profiling")]
-        {
-            puffin::profile_function!();
-            puffin::GlobalProfiler::lock().new_frame();
-            puffin_egui::profiler_window(ctx);
-        }
+        puffin::profile_function!();
+        #[cfg(feature = "profiling")]
+        puffin::GlobalProfiler::lock().new_frame();
+        #[cfg(feature = "profiling")]
+        puffin_egui::profiler_window(ctx);
 
         if let Some(open_file_dialog) = self.open_file_dialog.as_mut() {
             match open_file_dialog.show(ctx) {

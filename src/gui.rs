@@ -57,6 +57,7 @@ impl App {
                 Err(e) => (Err(e), None),
             })
             .collect_vec();
+        self.selected = self.flights_data_views.len() - 1;
 
         let single_log = self.flights_data_views.len() == 1;
         self.open_file_dialog = None;

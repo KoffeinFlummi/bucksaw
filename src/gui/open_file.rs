@@ -80,11 +80,11 @@ impl OpenFileDialog {
 
     // Show Loading&parsing progress bars popup
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Option<LogFile>> {
-        if let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
+        while let Ok(flight_progress) = self.flight_progress_receiver.try_recv() {
             self.flight_progress = flight_progress;
         }
 
-        if let Ok(file_progress) = self.file_progress_receiver.try_recv() {
+        while let Ok(file_progress) = self.file_progress_receiver.try_recv() {
             self.file_progress = file_progress;
         }
 

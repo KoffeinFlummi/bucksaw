@@ -627,7 +627,7 @@ impl VibeTab {
         let fft_size = self.fft_settings.size;
         let total_width = ui.available_width();
 
-        FlexLayout::new(1500.0, "Settings")
+        FlexLayout::new(1500.0, "Vibe Settings")
             .add(|ui| {
                 ui.horizontal(|ui| {
                     ui.label("Domain:");
